@@ -96,6 +96,7 @@ class TokenPipeline:
         self.telegram.register_command_handler('ready_tokens', self._handle_ready_tokens_command)
         self.telegram.register_command_handler('status', self._handle_status_command)
         self.telegram.register_command_handler('dashboard_url', self._handle_dashboard_url_command)
+        self.telegram.register_command_handler('check_valid', self._handle_check_valid_command)
         
         logger.info("✅ Команды Telegram бота зарегистрированы")
     
@@ -131,8 +132,8 @@ class TokenPipeline:
         """
         Обработчик команды отправки токенов
         
-        Проверяет все готовые токены на валидность,
-        если валидных >= 30, отправляет их пользователю
+        ОБНОВЛЕНО: Убрано ограничение на минимальное количество токенов
+        Теперь можно отправить даже 1 токен
         """
         try:
             logger.info("📤 [Command] Начало обработки команды send_tokens")
@@ -141,7 +142,12 @@ class TokenPipeline:
             ready_tokens = self.db.get_ready_tokens(limit=1000)  # Берем все готовые
             
             if not ready_tokens:
-                self.telegram.send_insufficient_tokens_error(0, self.config['telegram']['min_tokens'], chat_id=chat_id)
+                self.telegram.send_notification(
+                    title="⚠️ Нет готовых токенов",
+                    message="В данный момент нет готовых токенов для отправки.\n\nПроверьте статус системы.",
+                    level="WARNING",
+                    chat_id=chat_id
+                )
                 return
             
             logger.info(f"📦 [Command] Найдено готовых токенов: {len(ready_tokens)}")
@@ -182,15 +188,18 @@ class TokenPipeline:
             
             logger.info(f"📊 [Command] Результат проверки: {len(valid_tokens)} валидных, {len(invalid_tokens)} невалидных")
             
-            # Проверяем минимальное количество
-            min_tokens = self.config['telegram']['min_tokens']
-            
-            if len(valid_tokens) < min_tokens:
-                self.telegram.send_insufficient_tokens_error(len(valid_tokens), min_tokens, chat_id=chat_id)
+            # ОБНОВЛЕНО: Убрана проверка минимального количества
+            if len(valid_tokens) == 0:
+                self.telegram.send_notification(
+                    title="❌ Нет валидных токенов",
+                    message=f"Все токены ({len(invalid_tokens)}) оказались невалидными.\n\nОни были удалены из базы.",
+                    level="ERROR",
+                    chat_id=chat_id
+                )
                 return
             
             # Берем максимум токенов
-            max_tokens = self.config['telegram']['max_tokens']
+            max_tokens = self.config['telegram'].get('max_tokens', 50)
             tokens_to_send = valid_tokens[:max_tokens]
             
             logger.info(f"📤 [Command] Отправка {len(tokens_to_send)} токенов...")
@@ -227,6 +236,106 @@ class TokenPipeline:
         except Exception as e:
             logger.error(f"❌ [Command] Ошибка отправки токенов: {e}")
             self.telegram.send_error("Send Tokens", str(e))
+    
+    def _handle_check_valid_command(self, chat_id: str = None, message_id: int = None):
+        """
+        НОВОЕ: Обработчик команды проверки валидности готовых токенов
+        
+        Проверяет все токены в статусе 'ready' на валидность
+        Невалидные токены удаляются из базы
+        """
+        try:
+            logger.info("🔍 [Command] Начало проверки валидности токенов")
+            
+            # Получаем все готовые токены
+            ready_tokens = self.db.get_ready_tokens(limit=1000)
+            
+            if not ready_tokens:
+                self.telegram.send_notification(
+                    title="⚠️ Нет токенов для проверки",
+                    message="В данный момент нет готовых токенов.",
+                    level="WARNING",
+                    chat_id=chat_id,
+                    message_id=message_id
+                )
+                return
+            
+            total = len(ready_tokens)
+            logger.info(f"🔍 [Command] Проверка {total} токенов...")
+            
+            # Отправляем/редактируем сообщение о начале проверки
+            start_text = (
+                f"🔍 <b>Проверка валидности</b>\n\n"
+                f"Начинаю проверку {total} токенов...\n\n"
+                f"Это может занять некоторое время."
+            )
+            
+            if message_id:
+                self.telegram.edit_message(message_id, start_text, chat_id=chat_id)
+            else:
+                # Если нет message_id - отправляем новое и запоминаем его
+                result = self.telegram.send_message(start_text, chat_id=chat_id)
+                if result:
+                    message_id = result.get('result', {}).get('message_id')
+            
+            valid_count = 0
+            invalid_count = 0
+            
+            for i, token_data in enumerate(ready_tokens, 1):
+                token = token_data['token']
+                
+                # Обновляем прогресс каждые 3 токена
+                if i % 3 == 0 and message_id:
+                    progress_text = (
+                        f"🔍 <b>Проверка валидности</b>\n\n"
+                        f"Проверено: {i}/{total}\n"
+                        f"✅ Валидных: {valid_count}\n"
+                        f"❌ Невалидных: {invalid_count}\n\n"
+                        f"⏳ Продолжаю проверку..."
+                    )
+                    self.telegram.edit_message(message_id, progress_text, chat_id=chat_id)
+                
+                # Валидируем
+                is_valid, username = self.validator.validate_token(token)
+                
+                if is_valid:
+                    valid_count += 1
+                    logger.info(f"✅ [Check] Токен валиден: {username}")
+                else:
+                    invalid_count += 1
+                    logger.warning(f"❌ [Check] Токен невалиден: {token[:20]}...")
+                    
+                    # Помечаем как invalid и удаляем
+                    self.db.update_token_status(
+                        token=token,
+                        status='invalid',
+                        error='Failed validation check'
+                    )
+                
+                # Задержка между проверками
+                time.sleep(0.5)
+            
+            logger.info(f"✅ [Command] Проверка завершена: {valid_count} валидных, {invalid_count} невалидных")
+            
+            # Отправляем/редактируем финальный результат
+            self.telegram.send_validation_result(
+                total=total,
+                valid=valid_count,
+                invalid=invalid_count,
+                chat_id=chat_id,
+                message_id=message_id
+            )
+            
+        except Exception as e:
+            logger.error(f"❌ [Command] Ошибка проверки валидности: {e}")
+            if message_id:
+                self.telegram.edit_message(
+                    message_id,
+                    f"❌ <b>Ошибка проверки</b>\n\n{str(e)}",
+                    chat_id=chat_id
+                )
+            else:
+                self.telegram.send_error("Check Valid", str(e))
     
     def _handle_ready_tokens_command(self, chat_id: str = None, message_id: int = None):
         """Обработчик команды информации о готовых токенах"""

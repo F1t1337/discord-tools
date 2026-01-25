@@ -1,3 +1,7 @@
+"""
+Модуль для мониторинга покупок на LZT Market
+Обновлено: добавлен флаг для предотвращения спама уведомлений о низком балансе
+"""
 import requests
 import time
 import json
@@ -36,6 +40,9 @@ class LZTMonitor:
         self.processed_items = set()  # ID уже обработанных покупок
         self.user_id = None  # ID пользователя (получим при первом запросе)
         
+        # НОВОЕ: Флаг для отслеживания отправки уведомления о низком балансе
+        self.low_balance_notification_sent = False
+        
     def _make_request(self, endpoint: str, params: Dict = None) -> Optional[Dict]:
         """
         Выполняет запрос к API LZT
@@ -58,29 +65,27 @@ class LZTMonitor:
                 logger.error("❌ LZT API: Неверный токен авторизации")
                 return None
             else:
-                logger.error(f"❌ LZT API Error: {response.status_code} - {response.text}")
+                logger.error(f"❌ LZT API error: {response.status_code} - {response.text}")
                 return None
                 
         except requests.exceptions.RequestException as e:
-            logger.error(f"❌ Ошибка подключения к LZT API: {e}")
+            logger.error(f"❌ Ошибка запроса к LZT API: {e}")
             return None
     
     def get_balance(self) -> Optional[float]:
         """
-        Получает текущий баланс аккаунта
+        Получает текущий баланс пользователя
         
         Returns:
-            Баланс или None при ошибке
+            Баланс в рублях или None при ошибке
         """
         data = self._make_request("/me")
         
         if data and 'user' in data:
-            balance = data['user'].get('balance', 0)
-            # Сохраняем user_id для последующих запросов
-            if not self.user_id:
-                self.user_id = data['user'].get('user_id')
-            logger.info(f"💰 Текущий баланс LZT: {balance} ₽")
-            return float(balance)
+            balance = float(data['user'].get('balance', 0))
+            self.user_id = data['user'].get('user_id')
+            logger.debug(f"💰 Баланс LZT: {balance} ₽")
+            return balance
         
         return None
     
@@ -88,16 +93,37 @@ class LZTMonitor:
         """
         Проверяет баланс и возвращает True если нужно отправить уведомление
         
+        ОБНОВЛЕНО: Теперь проверяет флаг уведомления
+        - Если баланс низкий И уведомление не было отправлено → возвращает True и устанавливает флаг
+        - Если баланс восстановился → сбрасывает флаг
+        - Если баланс низкий НО уведомление уже отправлено → возвращает False (не спамим)
+        
         Returns:
-            True если баланс ниже минимального
+            True если баланс ниже минимального И нужно отправить уведомление
         """
         balance = self.get_balance()
         
-        if balance is not None and balance < self.min_balance_alert:
-            logger.warning(f"⚠️ Низкий баланс LZT: {balance} ₽ (минимум: {self.min_balance_alert} ₽)")
-            return True
+        if balance is None:
+            return False
         
-        return False
+        # Проверяем восстановился ли баланс
+        if balance >= self.min_balance_alert:
+            # Баланс в норме - сбрасываем флаг
+            if self.low_balance_notification_sent:
+                logger.info(f"✅ Баланс восстановлен: {balance} ₽ (минимум: {self.min_balance_alert} ₽)")
+                self.low_balance_notification_sent = False
+            return False
+        
+        # Баланс низкий
+        if not self.low_balance_notification_sent:
+            # Уведомление еще не отправляли - отправляем
+            logger.warning(f"⚠️ Низкий баланс LZT: {balance} ₽ (минимум: {self.min_balance_alert} ₽)")
+            self.low_balance_notification_sent = True
+            return True
+        else:
+            # Уведомление уже отправлено - не спамим
+            logger.debug(f"Баланс все еще низкий: {balance} ₽, но уведомление уже отправлено")
+            return False
     
     def get_purchased_accounts(self, category_id: int = None) -> List[Dict]:
         """
@@ -132,248 +158,78 @@ class LZTMonitor:
         
         return []
     
-    def get_account_details(self, item_id: int) -> Optional[Dict]:
-        """
-        Получает детальную информацию об аккаунте
-        
-        Args:
-            item_id: ID товара
-            
-        Returns:
-            Информация об аккаунте
-        """
-        data = self._make_request(f"/{item_id}")
-        
-        if data and 'item' in data:
-            return data['item']
-        
-        return None
-    
-    def get_account_goods(self, item_id: int) -> Optional[Dict]:
-        """
-        Получает данные для входа в купленный аккаунт
-        
-        Args:
-            item_id: ID товара
-            
-        Returns:
-            Данные аккаунта (логин, пароль, токен и т.д.)
-        """
-        # Простой GET запрос к /{item_id} возвращает данные с токеном в поле login
-        data = self._make_request(f"/{item_id}")
-        
-        if data and 'item' in data:
-            return data['item']
-        
-        return None
-    
-    def extract_token_from_account(self, item_id: int) -> Optional[str]:
-        """
-        Извлекает Discord токен из купленного аккаунта
-        
-        Args:
-            item_id: ID товара
-            
-        Returns:
-            Discord токен или None
-        """
-        # Получаем данные аккаунта
-        account = self.get_account_goods(item_id)
-        
-        if not account:
-            logger.warning(f"⚠️ Не удалось получить данные аккаунта {item_id}")
-            return None
-        
-        # 1. Токен находится в поле login
-        if 'login' in account and account['login']:
-            token = account['login']
-            if isinstance(token, str) and len(token) > 50:
-                logger.info(f"✅ Токен найден в поле 'login'")
-                return token
-        
-        # 2. Проверяем поле password (иногда там токен)
-        if 'password' in account and account['password']:
-            password = account['password']
-            if isinstance(password, str) and len(password) > 50:
-                logger.info(f"✅ Токен найден в поле 'password'")
-                return password
-        
-        # 3. Проверяем поле token
-        if 'token' in account and account['token']:
-            return account['token']
-        
-        # 4. Проверяем login_data
-        if 'login_data' in account and account['login_data']:
-            login_data = account['login_data']
-            if isinstance(login_data, str) and len(login_data) > 50:
-                return login_data
-        
-        # 5. Проверяем account_data
-        if 'account_data' in account and account['account_data']:
-            account_data = account['account_data']
-            if isinstance(account_data, str) and len(account_data) > 50:
-                return account_data
-        
-        logger.warning(f"⚠️ Не удалось извлечь токен из аккаунта {item_id}")
-        logger.debug(f"Доступные поля: {list(account.keys())}")
-        return None
-    
     def get_new_purchases(self) -> List[Dict]:
         """
-        Получает новые покупки Discord аккаунтов с момента последней проверки
+        Получает новые покупки Discord токенов с момента последней проверки
         
         Returns:
             Список новых покупок с токенами
         """
-        accounts = self.get_purchased_accounts(category_id=self.DISCORD_CATEGORY_ID)
+        purchases = self.get_purchased_accounts(category_id=self.DISCORD_CATEGORY_ID)
         new_purchases = []
         
-        # При первом запуске проверяем последние 10 аккаунтов
-        if self.last_check_time is None:
-            self.last_check_time = datetime.now().timestamp()
-            logger.info(f"🔄 Первый запуск: проверяем последние 10 покупок...")
-            
-            # Берем последние 10 аккаунтов
-            recent_accounts = accounts[:10]
-            
-            for account in recent_accounts:
-                item_id = account.get('item_id')
-                
-                # Получаем токен
-                token = self.extract_token_from_account(item_id)
-                
-                if token:
-                    # Проверяем есть ли в БД
-                    if self.database:
-                        existing = self.database.get_token_info(token)
-                        
-                        if existing:
-                            # Токен уже есть в БД - пропускаем
-                            self.processed_items.add(item_id)
-                            logger.debug(f"⏭️ Токен {item_id} уже в БД, пропускаем")
-                            continue
-                    
-                    # Токен новый - обрабатываем
-                    logger.info(f"🆕 Найден новый токен при запуске: Item ID {item_id}")
-                    
-                    purchase_info = {
-                        'item_id': item_id,
-                        'token': token,
-                        'price': account.get('price', 0),
-                        'username': account.get('title', 'Unknown'),
-                        'seller': account.get('seller', 'Unknown')
-                    }
-                    
-                    new_purchases.append(purchase_info)
-                    self.processed_items.add(item_id)
-                else:
-                    self.processed_items.add(item_id)
-            
-            logger.info(f"✅ Проверка при запуске завершена: найдено {len(new_purchases)} новых токенов")
-            return new_purchases
-        
-        # Обычная проверка - ищем только новые item_id
-        for account in accounts:
-            item_id = account.get('item_id')
+        for purchase in purchases:
+            item_id = purchase.get('item_id')
             
             # Пропускаем уже обработанные
             if item_id in self.processed_items:
                 continue
             
-            # Это новая покупка! Извлекаем токен
-            logger.info(f"🆕 Обнаружена новая покупка: Item ID {item_id}")
+            # Получаем данные аккаунта
+            item_data = purchase.get('item', {})
             
-            token = self.extract_token_from_account(item_id)
+            # Извлекаем Discord токен из описания
+            token = self._extract_discord_token(item_data)
             
             if token:
+                # Проверяем есть ли токен уже в БД (если передана БД)
+                if self.database:
+                    existing = self.database.get_token_info(token)
+                    if existing:
+                        logger.debug(f"⏭️ Токен {item_id} уже в БД, пропускаем")
+                        self.processed_items.add(item_id)
+                        continue
+                
                 purchase_info = {
                     'item_id': item_id,
                     'token': token,
-                    'price': account.get('price', 0),
-                    'username': account.get('title', 'Unknown'),
-                    'seller': account.get('seller', 'Unknown')
+                    'price': purchase.get('price', 0),
+                    'username': item_data.get('title', 'Unknown'),
+                    'purchase_date': purchase.get('purchase_date')
                 }
                 
                 new_purchases.append(purchase_info)
                 self.processed_items.add(item_id)
                 
-                logger.info(f"✅ Новая покупка добавлена: {purchase_info['username']} за {purchase_info['price']} ₽")
-            else:
-                logger.warning(f"⚠️ Не удалось получить токен для покупки {item_id}")
-                self.processed_items.add(item_id)
+                logger.info(f"🆕 Новая покупка: {purchase_info['username']} за {purchase_info['price']} ₽")
         
         return new_purchases
     
-    def start_monitoring(self, callback_func):
+    def _extract_discord_token(self, item_data: Dict) -> Optional[str]:
         """
-        Запускает непрерывный мониторинг новых покупок
+        Извлекает Discord токен из данных аккаунта
         
         Args:
-            callback_func: Функция которая будет вызвана при новых покупках
-                          Принимает список словарей с информацией о покупках
+            item_data: Данные аккаунта из API
+            
+        Returns:
+            Discord токен или None
         """
-        logger.info(f"🔍 Запуск мониторинга LZT Market (интервал: {self.check_interval}с)")
+        # Токен может быть в разных полях
+        # Проверяем основные места
         
-        # Первая проверка баланса
-        self.check_balance_alert()
+        # 1. В description
+        description = item_data.get('description', '')
+        if description and len(description) > 50:
+            # Discord токены обычно длинные строки
+            return description.strip()
         
-        while True:
-            try:
-                # Получаем новые покупки
-                new_purchases = self.get_new_purchases()
-                
-                if new_purchases:
-                    logger.info(f"📦 Найдено новых покупок: {len(new_purchases)}")
-                    callback_func(new_purchases)
-                
-                # Периодически проверяем баланс (каждые 10 проверок)
-                if len(self.processed_items) % 10 == 0:
-                    if self.check_balance_alert():
-                        # Можно добавить вызов функции для отправки уведомления
-                        pass
-                
-                # Ждем до следующей проверки
-                time.sleep(self.check_interval)
-                
-            except KeyboardInterrupt:
-                logger.info("⏹️ Остановка мониторинга LZT")
-                break
-            except Exception as e:
-                logger.error(f"❌ Ошибка в мониторинге LZT: {e}")
-                time.sleep(self.check_interval)
-
-
-# Пример использования
-if __name__ == "__main__":
-    # Настройка логирования
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
-    )
-    
-    # Пример конфигурации
-    config = {
-        "api_token": "your_lzt_token_here",
-        "check_interval": 60,
-        "min_balance_alert": 100
-    }
-    
-    # Создаем монитор
-    monitor = LZTMonitor(
-        api_token=config['api_token'],
-        check_interval=config['check_interval'],
-        min_balance_alert=config['min_balance_alert']
-    )
-    
-    # Функция обработки новых покупок
-    def handle_new_purchases(purchases):
-        """Обработка новых покупок"""
-        for purchase in purchases:
-            print(f"\n📦 Новая покупка:")
-            print(f"   Token: {purchase['token'][:20]}...")
-            print(f"   Username: {purchase['username']}")
-            print(f"   Price: {purchase['price']} ₽")
-            print(f"   Seller: {purchase['seller']}")
-    
-    # Запускаем мониторинг
-    monitor.start_monitoring(handle_new_purchases)
+        # 2. В title (иногда продавцы пишут там)
+        title = item_data.get('title', '')
+        if title and len(title) > 50 and '.' in title:
+            return title.strip()
+        
+        # 3. В других полях с учетными данными
+        # Тут можно добавить дополнительную логику
+        
+        return None

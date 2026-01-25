@@ -117,6 +117,9 @@ class TelegramBot:
                 {"text": "📦 Отправить токены", "callback_data": "send_tokens"},
             ],
             [
+                {"text": "✅ Проверить валид", "callback_data": "check_valid"},
+            ],
+            [
                 {"text": "📋 Готовые токены", "callback_data": "ready_tokens"},
                 {"text": "🔄 Статус системы", "callback_data": "status"}
             ],
@@ -379,6 +382,46 @@ class TelegramBot:
                 f"2. Запустите: <code>cloudflared tunnel --url http://localhost:5000</code>\n"
                 f"3. Снова нажмите эту кнопку"
             )
+        
+        if message_id:
+            return self.edit_message(message_id, text, reply_markup=keyboard, chat_id=chat_id)
+        else:
+            result = self.send_message(text, reply_markup=keyboard, chat_id=chat_id)
+            return result is not None
+    
+    def send_validation_result(self, total: int, valid: int, invalid: int, chat_id: str = None, message_id: int = None) -> bool:
+        """Отправляет результаты проверки валидности токенов"""
+        # Кнопка "Назад"
+        keyboard = {
+            "inline_keyboard": [[{"text": "◀️ Назад", "callback_data": "menu"}]]
+        }
+        
+        # Эмодзи в зависимости от результата
+        if invalid == 0:
+            emoji = "✅"
+            result_text = "Все токены валидны!"
+        elif valid == 0:
+            emoji = "❌"
+            result_text = "Все токены невалидны!"
+        else:
+            emoji = "⚠️"
+            result_text = "Проверка завершена"
+        
+        text = (
+            f"{emoji} <b>{result_text}</b>\n\n"
+            f"📊 <b>Результаты проверки:</b>\n"
+            f"🔍 Проверено: {total}\n"
+            f"✅ Валидных: {valid}\n"
+            f"❌ Невалидных: {invalid}\n\n"
+        )
+        
+        if invalid > 0:
+            text += f"🗑️ Невалидные токены удалены из базы\n\n"
+        
+        if valid > 0:
+            text += f"📦 Валидных токенов готово к отправке: <b>{valid}</b>"
+        else:
+            text += f"⚠️ Нет валидных токенов для отправки"
         
         if message_id:
             return self.edit_message(message_id, text, reply_markup=keyboard, chat_id=chat_id)
