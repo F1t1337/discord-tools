@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Discord Token Manager</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: var(--tg-theme-bg-color, #0a0e1a);
+            color: var(--tg-theme-text-color, #e5e7eb);
+            overflow: hidden;
+        }
+
+        .loading-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(0, 243, 255, 0.2);
+            border-top-color: #00f3ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: var(--tg-theme-text-color, #e5e7eb);
+        }
+
+        .loading-subtext {
+            font-size: 14px;
+            color: var(--tg-theme-hint-color, #9ca3af);
+            max-width: 300px;
+            line-height: 1.5;
+        }
+
+        .error-container {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .error-icon {
+            font-size: 60px;
+            margin-bottom: 20px;
+        }
+
+        .error-title {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            color: #ff3366;
+        }
+
+        .error-text {
+            font-size: 14px;
+            color: var(--tg-theme-hint-color, #9ca3af);
+            max-width: 320px;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+
+        .retry-button {
+            background: var(--tg-theme-button-color, #00f3ff);
+            color: var(--tg-theme-button-text-color, #000);
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .retry-button:active {
+            opacity: 0.8;
+        }
+
+        .url-display {
+            background: rgba(0, 243, 255, 0.1);
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            word-break: break-all;
+            color: #00f3ff;
+        }
+
+        #dashboard-frame {
+            display: none;
+            width: 100%;
+            height: 100vh;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- Загрузка -->
+    <div id="loading" class="loading-container">
+        <div class="spinner"></div>
+        <div class="loading-text">Подключение к Dashboard...</div>
+        <div class="loading-subtext" id="loading-subtext">Получаем актуальный URL</div>
+        <div id="current-url" class="url-display" style="display: none;"></div>
+    </div>
+
+    <!-- Ошибка -->
+    <div id="error" class="error-container">
+        <div class="error-icon">⚠️</div>
+        <div class="error-title">Не удалось подключиться</div>
+        <div id="error-message" class="error-text"></div>
+        <button class="retry-button" onclick="loadDashboard()">🔄 Попробовать снова</button>
+    </div>
+
+    <!-- Dashboard iframe -->
+    <iframe id="dashboard-frame"></iframe>
+
+    <script>
+        // Инициализация Telegram WebApp
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        tg.enableClosingConfirmation();
+
+        // Определяем API base автоматически
+        const API_BASE = window.location.origin + '/api';
+
+        console.log('🚀 Mini App запущен');
+        console.log('📡 API Base:', API_BASE);
+
+        // Функция получения Dashboard URL
+        async function getDashboardUrl() {
+            try {
+                updateLoadingText('Запрос к серверу...');
+                
+                const response = await fetch(`${API_BASE}/ngrok-url`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                console.log('📥 Ответ получен:', response.status);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                console.log('📊 Данные:', data);
+                
+                if (data.url) {
+                    updateLoadingText('URL получен!');
+                    showUrl(data.url);
+                    return data.url;
+                } else if (data.status === 'inactive') {
+                    throw new Error('Ngrok не запущен. Запустите: ngrok http 5000');
+                } else {
+                    throw new Error('URL не найден в ответе сервера');
+                }
+            } catch (error) {
+                console.error('❌ Ошибка получения URL:', error);
+                throw error;
+            }
+        }
+
+        // Обновить текст загрузки
+        function updateLoadingText(text) {
+            const subtext = document.getElementById('loading-subtext');
+            if (subtext) {
+                subtext.textContent = text;
+            }
+        }
+
+        // Показать URL
+        function showUrl(url) {
+            const urlDisplay = document.getElementById('current-url');
+            if (urlDisplay) {
+                urlDisplay.textContent = url;
+                urlDisplay.style.display = 'block';
+            }
+        }
+
+        // Функция загрузки Dashboard
+        async function loadDashboard() {
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+            const frame = document.getElementById('dashboard-frame');
+            const errorMessage = document.getElementById('error-message');
+
+            // Показываем загрузку
+            loading.style.display = 'flex';
+            error.style.display = 'none';
+            frame.style.display = 'none';
+
+            try {
+                // Получаем URL
+                updateLoadingText('Получаем URL от ngrok...');
+                const dashboardUrl = await getDashboardUrl();
+                
+                console.log('✅ Dashboard URL:', dashboardUrl);
+
+                // Загружаем Dashboard в iframe
+                updateLoadingText('Загрузка Dashboard...');
+                frame.src = dashboardUrl;
+                
+                // Таймаут на загрузку
+                let loadTimeout = setTimeout(() => {
+                    showError('Превышено время ожидания загрузки.\n\nПроверьте что Dashboard запущен и доступен.');
+                }, 15000);
+
+                // Ждем загрузки
+                frame.onload = function() {
+                    clearTimeout(loadTimeout);
+                    console.log('✅ Dashboard загружен');
+                    
+                    loading.style.display = 'none';
+                    frame.style.display = 'block';
+                    
+                    // Уведомляем Telegram что приложение готово
+                    tg.ready();
+                    tg.MainButton.hide();
+                };
+
+                // Обработка ошибок загрузки iframe
+                frame.onerror = function(e) {
+                    clearTimeout(loadTimeout);
+                    console.error('❌ Ошибка загрузки iframe:', e);
+                    showError('Не удалось загрузить Dashboard.\n\nПроверьте что система запущена.');
+                };
+
+            } catch (err) {
+                console.error('❌ Критическая ошибка:', err);
+                
+                let errorMsg = `${err.message}\n\n`;
+                
+                if (err.message.includes('Ngrok не запущен')) {
+                    errorMsg += '💡 Запустите ngrok:\nngrok http 5000';
+                } else if (err.message.includes('HTTP')) {
+                    errorMsg += '💡 Проверьте что сервер запущен:\npython main.py --dashboard';
+                } else {
+                    errorMsg += '💡 Убедитесь что:\n1. Система запущена\n2. Ngrok активен\n3. Интернет работает';
+                }
+                
+                showError(errorMsg);
+            }
+        }
+
+        // Показать ошибку
+        function showError(message) {
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+            const errorMessage = document.getElementById('error-message');
+
+            loading.style.display = 'none';
+            error.style.display = 'flex';
+            errorMessage.textContent = message;
+        }
+
+        // Запускаем при загрузке
+        console.log('🎬 Начало загрузки Dashboard...');
+        loadDashboard();
+
+        // Обработка события back button
+        tg.BackButton.show();
+        tg.BackButton.onClick(function() {
+            console.log('⬅️ Нажата кнопка назад');
+            tg.close();
+        });
+
+        // Обработка закрытия приложения
+        window.addEventListener('beforeunload', function() {
+            console.log('👋 Mini App закрывается');
+        });
+    </script>
+</body>
+</html>

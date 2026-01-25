@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discord Token Manager - Dashboard</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Orbitron:wght@700;900&display=swap');
+        
+        :root {
+            --bg-primary: #0a0e1a;
+            --bg-secondary: #111827;
+            --bg-tertiary: #1a2234;
+            --bg-card: #151d2f;
+            --neon-cyan: #00f3ff;
+            --neon-magenta: #ff00d4;
+            --neon-green: #00ff88;
+            --neon-yellow: #ffdd00;
+            --neon-red: #ff3366;
+            --text-primary: #e5e7eb;
+            --text-secondary: #9ca3af;
+            --text-dim: #6b7280;
+            --border-color: #1f2937;
+            --border-glow: rgba(0, 243, 255, 0.2);
+            --shadow-glow: 0 0 20px rgba(0, 243, 255, 0.15);
+            --font-display: 'Orbitron', monospace;
+            --font-mono: 'JetBrains Mono', monospace;
+            --spacing-xs: 0.5rem;
+            --spacing-sm: 1rem;
+            --spacing-md: 1.5rem;
+            --spacing-lg: 2rem;
+            --spacing-xl: 3rem;
+        }
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: var(--font-mono);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+            position: relative;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+                linear-gradient(rgba(0, 243, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 243, 255, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+            z-index: 0;
+            animation: gridMove 20s linear infinite;
+        }
+        
+        @keyframes gridMove {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(50px); }
+        }
+        
+        body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+            box-shadow: 0 0 10px var(--neon-cyan);
+            animation: scan 4s linear infinite;
+            z-index: 1000;
+            pointer-events: none;
+        }
+        
+        @keyframes scan {
+            0% { transform: translateY(0); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateY(100vh); opacity: 0; }
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: var(--spacing-md);
+            position: relative;
+            z-index: 1;
+        }
+        
+        .header {
+            text-align: center;
+            padding: var(--spacing-xl) 0;
+            position: relative;
+            margin-bottom: var(--spacing-xl);
+        }
+        
+        .header h1 {
+            font-family: var(--font-display);
+            font-size: 3.5rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            background: linear-gradient(135deg, var(--neon-cyan), var(--neon-magenta), var(--neon-green));
+            background-size: 200% 200%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: gradientShift 3s ease infinite;
+            text-shadow: 0 0 30px rgba(0, 243, 255, 0.5);
+        }
+        
+        @keyframes gradientShift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+        
+        .header .subtitle {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.3em;
+            margin-top: var(--spacing-sm);
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 0.4rem 1.2rem;
+            background: rgba(0, 255, 136, 0.1);
+            border: 2px solid var(--neon-green);
+            border-radius: 20px;
+            color: var(--neon-green);
+            font-size: 0.85rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-top: var(--spacing-md);
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.2);
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: var(--spacing-md);
+            margin-bottom: var(--spacing-lg);
+        }
+        
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: var(--spacing-md);
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .card:hover {
+            border-color: var(--border-glow);
+            box-shadow: var(--shadow-glow);
+            transform: translateY(-2px);
+        }
+        
+        .card:hover::before { opacity: 1; }
+        
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--spacing-md);
+            padding-bottom: var(--spacing-sm);
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .card-title {
+            font-size: 0.85rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            color: var(--text-secondary);
+        }
+        
+        .card-icon { font-size: 1.5rem; opacity: 0.8; }
+        
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            font-family: var(--font-display);
+            color: var(--text-primary);
+            line-height: 1;
+            margin-bottom: var(--spacing-xs);
+        }
+        
+        .stat-label {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+        
+        .stat-cyan { color: var(--neon-cyan); text-shadow: 0 0 10px rgba(0, 243, 255, 0.3); }
+        .stat-green { color: var(--neon-green); text-shadow: 0 0 10px rgba(0, 255, 136, 0.3); }
+        .stat-magenta { color: var(--neon-magenta); text-shadow: 0 0 10px rgba(255, 0, 212, 0.3); }
+        .stat-yellow { color: var(--neon-yellow); text-shadow: 0 0 10px rgba(255, 221, 0, 0.3); }
+        .stat-red { color: var(--neon-red); text-shadow: 0 0 10px rgba(255, 51, 102, 0.3); }
+        
+        .progress-bar {
+            height: 8px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--neon-cyan), var(--neon-magenta));
+            border-radius: 4px;
+            transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+        }
+        
+        .pipeline-flow {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--spacing-lg);
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            margin-bottom: var(--spacing-lg);
+            overflow-x: auto;
+        }
+        
+        .pipeline-stage {
+            text-align: center;
+            flex: 1;
+            min-width: 120px;
+            position: relative;
+        }
+        
+        .pipeline-stage:not(:last-child)::after {
+            content: '▶';
+            position: absolute;
+            right: -15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--neon-cyan);
+            font-size: 1.5rem;
+            animation: arrowPulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes arrowPulse {
+            0%, 100% { opacity: 0.3; transform: translateY(-50%) translateX(0); }
+            50% { opacity: 1; transform: translateY(-50%) translateX(5px); }
+        }
+        
+        .pipeline-icon { font-size: 2rem; margin-bottom: 0.5rem; display: block; }
+        .pipeline-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-secondary);
+            margin-bottom: 0.25rem;
+        }
+        .pipeline-count {
+            font-size: 1.5rem;
+            font-weight: 700;
+            font-family: var(--font-display);
+            color: var(--neon-cyan);
+        }
+        
+        .table-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: var(--spacing-lg);
+        }
+        
+        .table-header {
+            background: var(--bg-secondary);
+            padding: var(--spacing-md);
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .table-header h2 {
+            font-size: 0.9rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            color: var(--text-primary);
+        }
+        
+        table { width: 100%; border-collapse: collapse; }
+        
+        thead th {
+            background: var(--bg-tertiary);
+            padding: var(--spacing-sm);
+            text-align: left;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        tbody tr {
+            border-bottom: 1px solid var(--border-color);
+            transition: background 0.2s;
+        }
+        
+        tbody tr:hover { background: rgba(0, 243, 255, 0.05); }
+        
+        tbody td {
+            padding: var(--spacing-sm);
+            font-size: 0.85rem;
+            color: var(--text-primary);
+        }
+        
+        .token-preview {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            background: var(--bg-tertiary);
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        
+        .status-pill {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .status-new { background: rgba(0, 243, 255, 0.2); color: var(--neon-cyan); border: 1px solid var(--neon-cyan); }
+        .status-validated { background: rgba(0, 255, 136, 0.2); color: var(--neon-green); border: 1px solid var(--neon-green); }
+        .status-cleaning { background: rgba(255, 221, 0, 0.2); color: var(--neon-yellow); border: 1px solid var(--neon-yellow); }
+        .status-ready { background: rgba(255, 0, 212, 0.2); color: var(--neon-magenta); border: 1px solid var(--neon-magenta); }
+        .status-sent { background: rgba(0, 255, 136, 0.2); color: var(--neon-green); border: 1px solid var(--neon-green); }
+        .status-invalid { background: rgba(255, 51, 102, 0.2); color: var(--neon-red); border: 1px solid var(--neon-red); }
+        
+        .reset-btn {
+            background: rgba(255, 153, 0, 0.1);
+            border: 1px solid var(--neon-yellow);
+            color: var(--neon-yellow);
+            padding: 0.4rem 0.8rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-family: var(--font-mono);
+        }
+        
+        .reset-btn:hover {
+            background: rgba(255, 153, 0, 0.2);
+            box-shadow: 0 0 10px rgba(255, 153, 0, 0.3);
+            transform: translateY(-1px);
+        }
+        
+        .reset-btn:active { transform: translateY(0); }
+        
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--bg-tertiary);
+            border-top-color: var(--neon-cyan);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .text-center { text-align: center; }
+        .empty-state {
+            text-align: center;
+            padding: var(--spacing-xl);
+            color: var(--text-dim);
+        }
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: var(--spacing-sm);
+            opacity: 0.3;
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 { font-size: 2rem; }
+            .grid { grid-template-columns: 1fr; }
+            .pipeline-flow { flex-direction: column; }
+            .pipeline-stage:not(:last-child)::after {
+                content: '▼';
+                right: auto;
+                top: auto;
+                bottom: -15px;
+                left: 50%;
+                transform: translateX(-50%);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>Discord Token Manager</h1>
+            <p class="subtitle">Real-Time Pipeline Monitoring</p>
+            <div class="status-badge" id="statusBadge">
+                <span class="spinner" style="margin-right: 8px; vertical-align: middle;"></span>
+                System Online
+            </div>
+        </header>
+
+        <div class="grid" id="statsGrid"></div>
+        <div class="pipeline-flow" id="pipelineFlow"></div>
+        <div class="grid" id="todayStats"></div>
+
+        <div class="table-container">
+            <div class="table-header">
+                <h2>🧹 Токены в процессе очистки</h2>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Item ID</th>
+                        <th>Цена</th>
+                        <th>Статус</th>
+                        <th>Создан</th>
+                        <th>Действие</th>
+                    </tr>
+                </thead>
+                <tbody id="cleaningTokensTable">
+                    <tr>
+                        <td colspan="6" class="text-center">
+                            <span class="spinner"></span> Загрузка...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="table-container">
+            <div class="table-header">
+                <h2>📋 Последние токены</h2>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Token</th>
+                        <th>Username</th>
+                        <th>Статус</th>
+                        <th>Цена</th>
+                        <th>Создан</th>
+                    </tr>
+                </thead>
+                <tbody id="recentTokensTable">
+                    <tr>
+                        <td colspan="5" class="text-center">
+                            <span class="spinner"></span> Загрузка...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin + '/api';
+        const UPDATE_INTERVAL = 2000;
+
+        async function fetchData(endpoint) {
+            try {
+                const response = await fetch(`${API_BASE}${endpoint}`);
+                if (!response.ok) throw new Error('Network response was not ok');
+                return await response.json();
+            } catch (error) {
+                console.error(`Error fetching ${endpoint}:`, error);
+                return null;
+            }
+        }
+
+        async function updateStatus() {
+            const data = await fetchData('/status');
+            if (!data) return;
+
+            const badge = document.getElementById('statusBadge');
+            if (data.running) {
+                badge.innerHTML = '<span class="spinner" style="margin-right: 8px; vertical-align: middle;"></span>System Online';
+                badge.style.background = 'rgba(0, 255, 136, 0.1)';
+                badge.style.borderColor = 'var(--neon-green)';
+                badge.style.color = 'var(--neon-green)';
+            } else {
+                badge.innerHTML = '⚠️ System Offline';
+                badge.style.background = 'rgba(255, 51, 102, 0.1)';
+                badge.style.borderColor = 'var(--neon-red)';
+                badge.style.color = 'var(--neon-red)';
+            }
+
+            updateMainStats(data);
+            updatePipeline(data);
+        }
+
+        function updateMainStats(data) {
+            const counts = data.counts || {};
+            const statsGrid = document.getElementById('statsGrid');
+            
+            statsGrid.innerHTML = `
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Новые</span>
+                        <span class="card-icon">📥</span>
+                    </div>
+                    <div class="stat-value stat-cyan">${counts.new || 0}</div>
+                    <div class="stat-label">Ожидают обработки</div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Валидные</span>
+                        <span class="card-icon">✅</span>
+                    </div>
+                    <div class="stat-value stat-green">${counts.validated || 0}</div>
+                    <div class="stat-label">Прошли проверку</div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Очищаются</span>
+                        <span class="card-icon">🧹</span>
+                    </div>
+                    <div class="stat-value stat-yellow">${counts.cleaning || 0}</div>
+                    <div class="stat-label">В процессе</div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Готовы</span>
+                        <span class="card-icon">📦</span>
+                    </div>
+                    <div class="stat-value stat-magenta">${counts.ready || 0}</div>
+                    <div class="stat-label">К отправке</div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Отправлено</span>
+                        <span class="card-icon">📤</span>
+                    </div>
+                    <div class="stat-value stat-green">${counts.sent || 0}</div>
+                    <div class="stat-label">Всего доставлено</div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Невалидные</span>
+                        <span class="card-icon">❌</span>
+                    </div>
+                    <div class="stat-value stat-red">${counts.invalid || 0}</div>
+                    <div class="stat-label">Отклонено</div>
+                </div>
+            `;
+        }
+
+        function updatePipeline(data) {
+            const counts = data.counts || {};
+            const pipelineFlow = document.getElementById('pipelineFlow');
+            
+            const stages = [
+                { icon: '📥', label: 'LZT Monitor', count: counts.new || 0 },
+                { icon: '✅', label: 'Validator #1', count: counts.validated || 0 },
+                { icon: '🧹', label: 'Cleaner', count: counts.cleaning || 0 },
+                { icon: '🔍', label: 'Validator #2', count: counts.cleaned || 0 },
+                { icon: '📦', label: 'Ready', count: counts.ready || 0 },
+            ];
+            
+            pipelineFlow.innerHTML = stages.map(stage => `
+                <div class="pipeline-stage">
+                    <span class="pipeline-icon">${stage.icon}</span>
+                    <div class="pipeline-label">${stage.label}</div>
+                    <div class="pipeline-count">${stage.count}</div>
+                </div>
+            `).join('');
+        }
+
+        async function updateTodayStats() {
+            const data = await fetchData('/statistics/today');
+            if (!data) return;
+
+            const todayStats = document.getElementById('todayStats');
+            
+            const successRate = data.success_rate || 0;
+            const successRateColor = successRate >= 70 ? 'green' : successRate >= 40 ? 'yellow' : 'red';
+            
+            todayStats.innerHTML = `
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Куплено</span>
+                        <span class="card-icon">🛒</span>
+                    </div>
+                    <div class="stat-value stat-cyan">${data.tokens_bought || 0}</div>
+                    <div class="stat-label">Токенов сегодня</div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Очищено</span>
+                        <span class="card-icon">✨</span>
+                    </div>
+                    <div class="stat-value stat-green">${data.tokens_cleaned || 0}</div>
+                    <div class="stat-label">Успешно обработано</div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Отправлено</span>
+                        <span class="card-icon">📤</span>
+                    </div>
+                    <div class="stat-value stat-magenta">${data.tokens_sent || 0}</div>
+                    <div class="stat-label">Доставлено пользователю</div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Потрачено</span>
+                        <span class="card-icon">💰</span>
+                    </div>
+                    <div class="stat-value stat-yellow">${(data.money_spent || 0).toFixed(2)} ₽</div>
+                    <div class="stat-label">Всего вложено</div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Success Rate</span>
+                        <span class="card-icon">📈</span>
+                    </div>
+                    <div class="stat-value stat-${successRateColor}">${successRate.toFixed(1)}%</div>
+                    <div class="progress-bar" style="margin-top: 1rem;">
+                        <div class="progress-fill" style="width: ${successRate}%"></div>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function updateCleaningTokens() {
+            const data = await fetchData('/tokens/cleaning');
+            if (!data) return;
+
+            const table = document.getElementById('cleaningTokensTable');
+            
+            if (data.length === 0) {
+                table.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="empty-state">
+                            <div class="empty-state-icon">🧹</div>
+                            <div>Нет токенов в процессе очистки</div>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            table.innerHTML = data.slice(0, 10).map(token => {
+                const resetButton = `
+                    <button 
+                        class="reset-btn" 
+                        onclick="resetTokenCleaning('${token.token}')"
+                        title="Сбросить очистку и начать заново"
+                    >
+                        🔄 Сбросить
+                    </button>
+                `;
+                
+                return `
+                    <tr>
+                        <td>${token.username || 'Unknown'}</td>
+                        <td>${token.lzt_item_id || 'N/A'}</td>
+                        <td>${(token.price || 0).toFixed(0)} ₽</td>
+                        <td><span class="status-pill status-cleaning">${token.cleaning_progress || 'Обработка...'}</span></td>
+                        <td>${token.created_at_str || 'N/A'}</td>
+                        <td>${resetButton}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        async function resetTokenCleaning(token) {
+            if (!confirm('Сбросить очистку этого токена и начать заново?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/tokens/reset_cleaning`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ token: token })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('✅ Токен возвращен в очередь очистки!');
+                    updateCleaningTokens();
+                } else {
+                    alert('❌ Ошибка: ' + (result.message || 'Не удалось сбросить очистку'));
+                }
+            } catch (error) {
+                console.error('Error resetting token cleaning:', error);
+                alert('❌ Ошибка при сбросе очистки');
+            }
+        }
+
+        async function updateRecentTokens() {
+            const data = await fetchData('/tokens?limit=20');
+            if (!data) return;
+
+            const table = document.getElementById('recentTokensTable');
+            
+            if (data.length === 0) {
+                table.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="empty-state">
+                            <div class="empty-state-icon">📋</div>
+                            <div>Нет токенов</div>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            table.innerHTML = data.map(token => {
+                const tokenPreview = token.token ? `${token.token.substring(0, 20)}...` : 'N/A';
+                const statusClass = `status-${token.status || 'new'}`;
+                
+                return `
+                    <tr>
+                        <td><span class="token-preview">${tokenPreview}</span></td>
+                        <td>${token.username || 'Unknown'}</td>
+                        <td><span class="status-pill ${statusClass}">${token.status || 'new'}</span></td>
+                        <td>${(token.price || 0).toFixed(0)} ₽</td>
+                        <td>${token.created_at_str || 'N/A'}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        async function updateDashboard() {
+            await Promise.all([
+                updateStatus(),
+                updateTodayStats(),
+                updateCleaningTokens(),
+                updateRecentTokens()
+            ]);
+        }
+
+        updateDashboard();
+        setInterval(updateDashboard, UPDATE_INTERVAL);
+
+        console.log('🚀 Dashboard initialized');
+        console.log(`📡 Connecting to API at ${API_BASE}`);
+        console.log(`🔄 Auto-refresh interval: ${UPDATE_INTERVAL}ms`);
+    </script>
+</body>
+</html>

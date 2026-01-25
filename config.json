@@ -1,0 +1,53 @@
+{
+  "lzt": {
+    "api_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzUxMiJ9.eyJzdWIiOjI2MTU0MjYsImlzcyI6Imx6dCIsImlhdCI6MTc2OTE5ODQ5NSwianRpIjoiOTE4MzM5Iiwic2NvcGUiOiJiYXNpYyByZWFkIHBvc3QgY29udmVyc2F0ZSBwYXltZW50IGludm9pY2UgY2hhdGJveCBtYXJrZXQiLCJleHAiOjE5MjY4Nzg0OTV9.h-4coumbxAbNnGdRzQhPmb8UOYxxICVm_kB-vrZlXhq_uEl44dPkH9gQi1KldJq5s2u-mez7sAStCcJHzws06Onxw2iSdtieU3KSuCyixLcryt3MXwxXTsBb45lLSrzOG5kJno_25jo4yMbPzB3SzAUIK0r05IDKVN3zjKeFijc",
+    "check_interval": 10,
+    "min_balance_alert": 100.0
+  },
+  
+  "validator": {
+    "timeout": 10,
+    "max_retries": 3,
+    "max_workers": 20
+  },
+  
+  "cleaner": {
+    "max_workers": 20,
+    "max_messages_delete": 20,
+    "base_delay": 1.0,
+    "min_delay": 0.8
+  },
+  
+  "telegram": {
+    "bot_token": "8418859791:AAF0vdC-J0lVnXVDhYl7aVGMcJBYexYShdU",
+    "chat_id": "934727036",
+    "min_tokens": 30,
+    "max_tokens": 50,
+    "notification_threshold": 40
+    
+  },
+  
+  "database": {
+    "path": "data/tokens.db"
+  },
+  
+  "proxy": {
+    "enabled": true,
+    "file": "data/proxies.txt"
+  },
+  
+  "logging": {
+    "level": "INFO",
+    "file": "data/logs/pipeline.log"
+  },
+  
+  "dashboard": {
+    "enabled": true,
+    "host": "0.0.0.0",
+    "port": 5000
+  },
+  
+  "live_stats": {
+    "enabled": true
+  }
+}
