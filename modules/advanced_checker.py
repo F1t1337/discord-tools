@@ -66,10 +66,12 @@ class DiscordAdvancedChecker:
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         })
     
-    def get_user_country(self, token: str) -> Optional[str]:
-        """Получает реальную страну пользователя из настроек"""
+    def get_user_country(self, token: str, user_data: Dict) -> Optional[str]:
+        """Получает реальную страну пользователя несколькими методами"""
+        headers = {'Authorization': token}
+        
+        # Метод 1: Из settings
         try:
-            headers = {'Authorization': token}
             response = self.session.get(
                 'https://discord.com/api/v9/users/@me/settings', 
                 headers=headers, 
@@ -78,17 +80,43 @@ class DiscordAdvancedChecker:
             
             if response.status_code == 200:
                 data = response.json()
-                # Пробуем разные поля
-                country = data.get('locale', '').lower()[:2]  # en-US -> en
                 
-                # Если есть geo_restricted_discovery - там может быть страна
+                # Пробуем geo_restricted_discovery
                 if 'geo_restricted_discovery' in data:
-                    return data['geo_restricted_discovery'].get('country_code', '').lower()
-                
-                return country if country else None
-            return None
+                    country = data['geo_restricted_discovery'].get('country_code', '').lower()
+                    if country:
+                        return country
         except:
-            return None
+            pass
+        
+        # Метод 2: Из billing (если есть платежные данные)
+        try:
+            response = self.session.get(
+                'https://discord.com/api/v9/users/@me/billing/payment-sources',
+                headers=headers,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                sources = response.json()
+                if sources and len(sources) > 0:
+                    # Берем страну из первого платежного метода
+                    billing_country = sources[0].get('country', '').lower()
+                    if billing_country and len(billing_country) == 2:
+                        return billing_country
+        except:
+            pass
+        
+        # Метод 3: Fallback на locale из user_data
+        locale = user_data.get('locale', '').lower()
+        if locale:
+            # Извлекаем код страны из locale (en-US -> us, ru -> ru)
+            if '-' in locale:
+                return locale.split('-')[1]
+            elif len(locale) == 2:
+                return locale
+        
+        return None
     
     def check_token_validity(self, token: str) -> Tuple[bool, Optional[Dict]]:
         """Проверяет валидность токена и возвращает данные пользователя"""
@@ -274,11 +302,8 @@ class DiscordAdvancedChecker:
         result['username'] = user_data.get('username')
         result['locale'] = user_data.get('locale', '').lower()
         
-        # Получаем реальную страну из настроек
-        country_code = self.get_user_country(token)
-        if not country_code:
-            # Fallback на locale
-            country_code = result['locale'][:2] if result['locale'] else None
+        # Получаем реальную страну несколькими методами
+        country_code = self.get_user_country(token, user_data)
         
         # СНГ проверка
         result['is_cis'] = country_code in self.CIS if country_code else False
