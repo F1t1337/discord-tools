@@ -287,8 +287,31 @@ class TokenPipeline:
             # Создаем чекер с 20 потоками
             checker = DiscordAdvancedChecker(threads=20)
             
-            # Запускаем проверку
-            result = checker.check_tokens(tokens_list)
+            # Переменные для отслеживания прогресса
+            completed = [0]  # Используем список чтобы изменять в callback
+            last_update = [time.time()]
+            
+            def progress_callback(current, total_count):
+                """Callback для обновления прогресса"""
+                completed[0] = current
+                
+                # Обновляем сообщение каждые 2 секунды
+                if message_id and (time.time() - last_update[0] >= 2):
+                    progress_text = (
+                        f"🔍 <b>Продвинутая проверка токенов</b>\n\n"
+                        f"⏳ Проверено: {current}/{total_count}\n"
+                        f"📊 Прогресс: {int(current/total_count*100)}%\n\n"
+                        f"Проверяю валидность, проспам, флаги, биллинг...\n"
+                        f"Пожалуйста, подождите."
+                    )
+                    try:
+                        self.telegram.edit_message(message_id, progress_text, chat_id=chat_id)
+                        last_update[0] = time.time()
+                    except:
+                        pass
+            
+            # Запускаем проверку с callback
+            result = checker.check_tokens(tokens_list, progress_callback=progress_callback)
             stats = result['statistics']
             results = result['results']
             

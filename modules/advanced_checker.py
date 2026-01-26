@@ -255,7 +255,7 @@ class DiscordAdvancedChecker:
         
         return result
     
-    def check_tokens(self, tokens: List[str]) -> Dict:
+    def check_tokens(self, tokens: List[str], progress_callback=None) -> Dict:
         """Проверяет список токенов и возвращает статистику"""
         start_time = time.time()
         
@@ -272,14 +272,20 @@ class DiscordAdvancedChecker:
             futures = {executor.submit(self.check_single_token, token): token for token in unique_tokens}
             
             completed = 0
+            total = len(unique_tokens)
+            
             for future in as_completed(futures):
                 try:
                     result = future.result()
                     results.append(result)
                     completed += 1
                     
+                    # Вызываем callback для обновления прогресса
+                    if progress_callback:
+                        progress_callback(completed, total)
+                    
                     if completed % 5 == 0:
-                        logger.info(f"⏳ Проверено {completed}/{len(unique_tokens)} токенов...")
+                        logger.info(f"⏳ Проверено {completed}/{total} токенов...")
                 except Exception as e:
                     logger.error(f"❌ Ошибка проверки токена: {e}")
         
