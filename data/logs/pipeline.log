@@ -1977,3 +1977,872 @@
 2026-01-26 01:47:54,793 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:47:54] "GET /api/tokens/cleaning HTTP/1.1" 200 -
 2026-01-26 01:47:54,793 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:47:54] "GET /api/status HTTP/1.1" 200 -
 2026-01-26 01:47:54,798 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:47:54] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:48:54,777 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:48:54] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:48:54,777 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:48:54] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:48:54,778 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:48:54] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:48:54,782 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:48:54] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:49:54,785 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:49:54] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:49:54,785 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:49:54] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:49:54,787 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:49:54] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:49:54,790 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:49:54] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:50:54,778 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:50:54] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:50:54,779 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:50:54] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:50:54,780 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:50:54] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:50:54,784 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:50:54] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:51:54,778 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:51:54] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:51:54,779 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:51:54] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:51:54,780 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:51:54] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:51:54,786 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:51:54] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:51:59,122 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:51:59] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:51:59,125 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:51:59] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:51:59,126 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:51:59] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:51:59,130 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:51:59] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:51:59,550 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:51:59] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:51:59,550 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:51:59] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:51:59,550 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:51:59] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:51:59,556 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:51:59] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:01,575 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:01] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:01,577 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:01] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:01,578 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:01] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:01,582 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:01] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:03,703 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:03] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:03,706 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:03] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:03,707 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:03] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:03,710 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:03] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:05,703 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:05] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:05,704 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:05] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:05,706 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:05] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:05,709 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:05] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:07,702 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:07] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:07,703 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:07] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:07,705 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:07] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:07,709 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:07] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:09,708 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:09] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:09,713 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:09] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:09,713 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:09] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:09,716 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:09] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:11,703 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:11] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:11,703 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:11] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:11,706 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:11] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:11,708 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:11] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:13,707 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:13] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:13,707 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:13] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:13,709 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:13] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:13,713 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:13] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:15,702 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:15] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:15,706 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:15] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:15,706 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:15] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:15,711 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:15] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:17,693 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:17] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:17,696 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:17] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:17,697 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:17] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:17,699 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:17] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:19,713 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:19] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:19,714 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:19] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:19,715 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:19] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:19,720 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:19] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:21,692 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:21] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:21,693 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:21] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:21,694 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:21] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:21,699 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:21] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:23,697 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:23] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:23,704 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:23] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:23,707 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:23] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:23,711 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:23] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:25,712 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:25] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:25,713 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:25] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:25,714 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:25] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:25,718 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:25] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:27,699 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:27] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:27,701 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:27] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:27,705 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:27] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:27,706 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:27] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:29,690 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:29] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:29,702 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:29] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:29,703 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:29] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:29,707 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:29] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:31,713 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:31] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:31,714 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:31] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:31,716 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:31] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:31,719 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:31] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:33,706 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:33] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:33,707 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:33] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:33,707 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:33] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:33,711 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:33] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:35,692 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:35] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:35,694 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:35] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:35,696 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:35] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:35,699 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:35] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:37,711 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:37] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:37,711 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:37] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:37,713 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:37] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:37,716 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:37] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:39,696 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:39] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:39,700 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:39] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:39,700 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:39] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:39,704 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:39] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:41,705 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:41] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:41,710 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:41] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:41,717 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:41] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:41,722 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:41] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:43,703 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:43] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:43,704 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:43] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:43,704 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:43] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:43,709 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:43] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:45,706 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:45] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:45,707 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:45] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:45,707 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:45] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:45,712 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:45] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:47,701 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:47] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:47,703 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:47] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:47,703 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:47] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:47,707 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:47] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:49,779 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:49] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:49,780 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:49] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:49,781 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:49] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:49,785 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:49] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:51,705 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:51] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:51,706 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:51] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:51,709 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:51] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:51,714 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:51] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:53,692 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:53] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:53,696 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:53] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:53,703 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:53] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:53,704 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:53] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:55,709 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:55] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:55,709 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:55] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:55,713 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:55] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:55,714 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:55] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:57,715 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:57] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:57,716 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:57] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:57,718 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:57] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:57,722 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:57] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:52:59,700 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:59] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:52:59,700 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:59] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:52:59,702 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:59] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:52:59,707 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:52:59] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:53:54,785 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:53:54] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:53:54,785 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:53:54] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:53:54,786 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:53:54] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:53:54,790 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:53:54] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:54:53,147 - modules.telegram_bot - INFO - 📱 Получено сообщение от 934727036: /start
+2026-01-26 01:54:53,147 - modules.telegram_bot - INFO - 📱 Получена команда: /start
+2026-01-26 01:54:53,149 - modules.cloudflare_helper - INFO - ✅ Cloudflare metrics найдены на порту 20242
+2026-01-26 01:54:53,151 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:54:53,478 - modules.telegram_bot - INFO - 📱 Получено сообщение от 934727036: /start
+2026-01-26 01:54:53,478 - modules.telegram_bot - INFO - 📱 Получена команда: /start
+2026-01-26 01:54:53,480 - modules.cloudflare_helper - INFO - ✅ Cloudflare metrics найдены на порту 20242
+2026-01-26 01:54:53,482 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:54:53,660 - modules.telegram_bot - INFO - ✅ Сообщение отправлено в Telegram (message_id: 550)
+2026-01-26 01:54:54,056 - modules.telegram_bot - INFO - ✅ Сообщение отправлено в Telegram (message_id: 551)
+2026-01-26 01:54:54,774 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:54:54] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:54:54,775 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:54:54] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:54:54,776 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:54:54] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:54:54,779 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:54:54] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:55:02,416 - modules.telegram_bot - INFO - 📱 Получено сообщение от 934727036: /start
+2026-01-26 01:55:02,416 - modules.telegram_bot - INFO - 📱 Получена команда: /start
+2026-01-26 01:55:02,428 - modules.cloudflare_helper - INFO - ✅ Cloudflare metrics найдены на порту 20242
+2026-01-26 01:55:02,430 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:55:02,476 - modules.telegram_bot - INFO - 📱 Получено сообщение от 934727036: /start
+2026-01-26 01:55:02,476 - modules.telegram_bot - INFO - 📱 Получена команда: /start
+2026-01-26 01:55:02,490 - modules.cloudflare_helper - INFO - ✅ Cloudflare metrics найдены на порту 20242
+2026-01-26 01:55:02,492 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:55:02,960 - modules.telegram_bot - INFO - ✅ Сообщение отправлено в Telegram (message_id: 553)
+2026-01-26 01:55:03,027 - modules.telegram_bot - INFO - ✅ Сообщение отправлено в Telegram (message_id: 554)
+2026-01-26 01:55:10,981 - modules.telegram_bot - INFO - 📱 Получено сообщение от 934727036: /start
+2026-01-26 01:55:10,981 - modules.telegram_bot - INFO - 📱 Получена команда: /start
+2026-01-26 01:55:10,983 - modules.cloudflare_helper - INFO - ✅ Cloudflare metrics найдены на порту 20242
+2026-01-26 01:55:10,985 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:55:11,521 - modules.telegram_bot - INFO - ✅ Сообщение отправлено в Telegram (message_id: 557)
+2026-01-26 01:55:18,408 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:55:18] "GET /miniapp HTTP/1.1" 200 -
+2026-01-26 01:55:18,736 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:55:18,736 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:55:18] "GET /api/ngrok-url HTTP/1.1" 200 -
+2026-01-26 01:55:19,040 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:55:19] "GET / HTTP/1.1" 200 -
+2026-01-26 01:55:38,797 - modules.telegram_bot - INFO - 📱 Получена команда: dashboard_url от пользователя 934727036
+2026-01-26 01:55:39,359 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:55:39,858 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 558)
+2026-01-26 01:55:39,858 - core.pipeline - INFO - ✅ Dashboard URL отправлен: https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:55:41,034 - modules.telegram_bot - INFO - 📱 Получена команда: menu от пользователя 934727036
+2026-01-26 01:55:41,521 - modules.cloudflare_helper - INFO - ✅ Cloudflare metrics найдены на порту 20242
+2026-01-26 01:55:41,522 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:55:42,022 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 558)
+2026-01-26 01:55:43,466 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:55:43] "GET /miniapp HTTP/1.1" 200 -
+2026-01-26 01:55:43,657 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:55:43,657 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:55:43] "GET /api/ngrok-url HTTP/1.1" 200 -
+2026-01-26 01:55:44,113 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:55:44] "GET / HTTP/1.1" 200 -
+2026-01-26 01:55:54,797 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:55:54] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:55:54,797 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:55:54] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:55:54,798 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:55:54] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:55:54,802 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:55:54] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:56:20,301 - modules.telegram_bot - INFO - 📱 Получена команда: menu от пользователя 934727036
+2026-01-26 01:56:20,813 - modules.cloudflare_helper - INFO - ✅ Cloudflare metrics найдены на порту 20242
+2026-01-26 01:56:20,838 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:56:21,281 - modules.telegram_bot - INFO - 📱 Получена команда: menu от пользователя 934727036
+2026-01-26 01:56:21,387 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 558)
+2026-01-26 01:56:21,817 - modules.cloudflare_helper - INFO - ✅ Cloudflare metrics найдены на порту 20242
+2026-01-26 01:56:21,819 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:56:22,376 - modules.telegram_bot - ERROR - ❌ Telegram API error: 400 - {"ok":false,"error_code":400,"description":"Bad Request: message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message"}
+2026-01-26 01:56:23,334 - modules.telegram_bot - INFO - 📱 Получена команда: dashboard_url от пользователя 934727036
+2026-01-26 01:56:23,367 - modules.telegram_bot - INFO - 📱 Получена команда: dashboard_url от пользователя 934727036
+2026-01-26 01:56:23,409 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:56:23,409 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:23] "GET /api/ngrok-url HTTP/1.1" 200 -
+2026-01-26 01:56:23,732 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:23] "GET / HTTP/1.1" 200 -
+2026-01-26 01:56:23,880 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:56:23,960 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:56:24,047 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:24] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:56:24,056 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:24] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:56:24,059 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:24] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:56:24,134 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:24] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:56:24,457 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 558)
+2026-01-26 01:56:24,457 - core.pipeline - INFO - ✅ Dashboard URL отправлен: https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:56:24,491 - modules.telegram_bot - ERROR - ❌ Telegram API error: 400 - {"ok":false,"error_code":400,"description":"Bad Request: message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message"}
+2026-01-26 01:56:24,492 - core.pipeline - INFO - ✅ Dashboard URL отправлен: https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:56:29,890 - modules.telegram_bot - INFO - 📱 Получена команда: menu от пользователя 934727036
+2026-01-26 01:56:30,381 - modules.cloudflare_helper - INFO - ✅ Cloudflare metrics найдены на порту 20242
+2026-01-26 01:56:30,383 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:56:30,881 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 558)
+2026-01-26 01:56:32,394 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:32] "GET /miniapp HTTP/1.1" 200 -
+2026-01-26 01:56:32,676 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:56:32,677 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:32] "GET /api/ngrok-url HTTP/1.1" 200 -
+2026-01-26 01:56:32,858 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:32] "GET / HTTP/1.1" 200 -
+2026-01-26 01:56:40,489 - modules.telegram_bot - INFO - 📱 Получена команда: dashboard_url от пользователя 934727036
+2026-01-26 01:56:40,994 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:56:41,219 - modules.telegram_bot - INFO - 📱 Получена команда: dashboard_url от пользователя 934727036
+2026-01-26 01:56:41,521 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 558)
+2026-01-26 01:56:41,521 - core.pipeline - INFO - ✅ Dashboard URL отправлен: https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:56:41,735 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:56:42,261 - modules.telegram_bot - ERROR - ❌ Telegram API error: 400 - {"ok":false,"error_code":400,"description":"Bad Request: message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message"}
+2026-01-26 01:56:42,262 - core.pipeline - INFO - ✅ Dashboard URL отправлен: https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:56:43,659 - modules.telegram_bot - INFO - 📱 Получена команда: menu от пользователя 934727036
+2026-01-26 01:56:44,161 - modules.cloudflare_helper - INFO - ✅ Cloudflare metrics найдены на порту 20242
+2026-01-26 01:56:44,163 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:56:44,703 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 558)
+2026-01-26 01:56:46,872 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:46] "GET /miniapp HTTP/1.1" 200 -
+2026-01-26 01:56:47,139 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:56:47,140 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:47] "GET /api/ngrok-url HTTP/1.1" 200 -
+2026-01-26 01:56:47,378 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:47] "GET / HTTP/1.1" 200 -
+2026-01-26 01:56:49,897 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:49] "GET /miniapp HTTP/1.1" 200 -
+2026-01-26 01:56:50,125 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:50] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-01-26 01:56:50,132 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:56:50,133 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:50] "GET /api/ngrok-url HTTP/1.1" 200 -
+2026-01-26 01:56:50,313 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:50] "GET / HTTP/1.1" 200 -
+2026-01-26 01:56:50,546 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:50] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:56:50,549 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:50] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:56:50,551 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:50] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:56:50,551 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:50] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:56:52,706 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:52] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:56:52,707 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:52] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:56:52,708 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:52] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:56:52,712 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:52] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:56:54,559 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:54] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:56:54,560 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:54] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:56:54,564 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:54] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:56:54,568 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:54] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:56:54,712 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:54] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:56:54,713 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:54] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:56:54,714 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:54] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:56:54,721 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:54] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:56:56,548 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:56] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:56:56,553 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:56] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:56:56,557 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:56] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:56:56,561 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:56:56] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:56:59,987 - modules.telegram_bot - INFO - 📱 Получена команда: dashboard_url от пользователя 934727036
+2026-01-26 01:57:00,555 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:57:01,075 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 558)
+2026-01-26 01:57:01,075 - core.pipeline - INFO - ✅ Dashboard URL отправлен: https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:57:04,830 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:04] "GET / HTTP/1.1" 200 -
+2026-01-26 01:57:05,150 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:05] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:05,152 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:05] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:05,156 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:05] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:05,163 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:05] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:07,155 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:07] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:07,156 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:07] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:07,159 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:07] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:07,163 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:07] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:09,152 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:09] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:09,156 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:09] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:09,156 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:09] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:09,160 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:09] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:11,184 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:11] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:11,185 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:11] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:11,186 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:11] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:11,190 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:11] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:13,152 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:13] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:13,155 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:13] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:13,156 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:13] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:13,160 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:13] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:15,694 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:15] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:15,697 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:15] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:15,699 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:15] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:15,702 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:15] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:17,707 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:17] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:17,708 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:17] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:17,709 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:17] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:17,714 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:17] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:19,712 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:19] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:19,718 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:19] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:19,729 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:19] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:19,736 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:19] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:21,700 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:21] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:21,700 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:21] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:21,704 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:21] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:21,706 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:21] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:23,711 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:23] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:23,712 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:23] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:23,713 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:23] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:23,717 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:23] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:25,705 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:25] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:25,707 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:25] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:25,709 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:25] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:25,715 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:25] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:27,162 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:27] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:27,165 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:27] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:27,165 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:27] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:27,170 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:27] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:27,506 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:27] "GET / HTTP/1.1" 200 -
+2026-01-26 01:57:27,743 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:27] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:27,746 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:27] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:27,746 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:27] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:27,750 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:27] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:28,357 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:28] "GET / HTTP/1.1" 200 -
+2026-01-26 01:57:28,591 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:28] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:28,592 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:28] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:28,592 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:28] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:28,600 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:28] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:30,446 - modules.telegram_bot - INFO - 📱 Получена команда: menu от пользователя 934727036
+2026-01-26 01:57:30,604 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:30] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:30,605 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:30] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:30,606 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:30] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:30,612 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:30] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:31,019 - modules.cloudflare_helper - INFO - ✅ Cloudflare metrics найдены на порту 20242
+2026-01-26 01:57:31,021 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:57:31,559 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 558)
+2026-01-26 01:57:32,601 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:32] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:32,602 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:32] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:32,606 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:32] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:32,609 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:32] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:33,322 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:33] "GET /miniapp HTTP/1.1" 200 -
+2026-01-26 01:57:33,604 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:57:33,604 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:33] "GET /api/ngrok-url HTTP/1.1" 200 -
+2026-01-26 01:57:33,840 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:33] "GET / HTTP/1.1" 200 -
+2026-01-26 01:57:34,593 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:34] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:34,602 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:34] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:34,603 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:34] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:34,608 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:34] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:36,603 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:36] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:36,605 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:36] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:36,605 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:36] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:36,609 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:36] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:38,595 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:38] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:38,597 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:38] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:38,597 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:38] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:38,601 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:38] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:40,596 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:40] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:40,596 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:40] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:40,600 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:40] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:40,604 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:40] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:42,669 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:42] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:42,669 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:42] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:42,672 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:42] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:42,675 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:42] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:44,597 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:44] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:44,598 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:44] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:44,599 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:44] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:44,604 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:44] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:46,580 - modules.telegram_bot - INFO - 📱 Получена команда: stats от пользователя 934727036
+2026-01-26 01:57:46,599 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:46] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:46,601 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:46] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:46,601 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:46] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:46,605 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:46] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:47,586 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 558)
+2026-01-26 01:57:48,603 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:48] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:48,603 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:48] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:48,604 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:48] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:48,608 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:48] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:49,726 - modules.telegram_bot - INFO - 📱 Получена команда: stats от пользователя 934727036
+2026-01-26 01:57:50,597 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:50] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:50,598 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:50] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:50,598 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:50] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:50,605 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:50] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:50,726 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 558)
+2026-01-26 01:57:52,596 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:52] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:52,596 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:52] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:52,598 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:52] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:52,601 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:52] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:53,828 - modules.telegram_bot - INFO - 📱 Получена команда: menu от пользователя 934727036
+2026-01-26 01:57:54,323 - modules.cloudflare_helper - INFO - ✅ Cloudflare metrics найдены на порту 20242
+2026-01-26 01:57:54,325 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:57:54,607 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:54] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:54,608 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:54] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:54,608 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:54] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:54,615 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:54] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:54,764 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:54] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:54,766 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:54] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:54,768 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:54] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:54,775 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:54] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:54,870 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 558)
+2026-01-26 01:57:56,706 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:56] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:56,707 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:56] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:56,708 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:56] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:56,716 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:56] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:57:58,692 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:58] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:57:58,695 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:58] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:57:58,698 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:58] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:57:58,701 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:57:58] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:00,714 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:00] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:00,714 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:00] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:00,716 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:00] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:00,719 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:00] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:02,693 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:02] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:02,697 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:02] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:02,698 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:02] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:02,702 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:02] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:04,693 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:04] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:04,695 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:04] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:04,699 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:04] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:04,703 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:04] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:06,707 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:06] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:06,708 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:06] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:06,712 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:06] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:06,714 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:06] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:08,703 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:08] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:08,706 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:08] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:08,708 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:08] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:08,716 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:08] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:10,695 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:10] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:10,696 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:10] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:10,697 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:10] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:10,702 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:10] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:12,714 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:12] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:12,715 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:12] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:12,716 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:12] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:12,721 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:12] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:12,862 - modules.telegram_bot - INFO - 📱 Получено сообщение от 934727036: /start
+2026-01-26 01:58:12,863 - modules.telegram_bot - INFO - 📱 Получена команда: /start
+2026-01-26 01:58:12,865 - modules.cloudflare_helper - INFO - ✅ Cloudflare metrics найдены на порту 20242
+2026-01-26 01:58:12,867 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:58:13,367 - modules.telegram_bot - INFO - ✅ Сообщение отправлено в Telegram (message_id: 560)
+2026-01-26 01:58:14,699 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:14] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:14,700 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:14] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:14,700 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:14] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:14,705 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:14] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:15,820 - modules.telegram_bot - INFO - 📱 Получена команда: stats от пользователя 934727036
+2026-01-26 01:58:16,695 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:16] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:16,699 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:16] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:16,701 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:16] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:16,706 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:16] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:16,885 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 560)
+2026-01-26 01:58:18,711 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:18] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:18,712 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:18] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:18,714 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:18] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:18,718 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:18] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:18,966 - modules.telegram_bot - INFO - 📱 Получена команда: menu от пользователя 934727036
+2026-01-26 01:58:19,536 - modules.cloudflare_helper - INFO - ✅ Cloudflare metrics найдены на порту 20242
+2026-01-26 01:58:19,538 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:58:20,035 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 560)
+2026-01-26 01:58:20,704 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:20] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:20,861 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:20] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:20,862 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:20] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:20,868 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:20] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:21,662 - modules.telegram_bot - INFO - 📱 Получена команда: check_valid от пользователя 934727036
+2026-01-26 01:58:22,109 - modules.telegram_bot - INFO - 📱 Получена команда: check_valid от пользователя 934727036
+2026-01-26 01:58:22,179 - core.pipeline - INFO - 🔍 [Command] Начало проверки валидности токенов
+2026-01-26 01:58:22,179 - core.pipeline - INFO - 🔍 [Command] Проверка 7 токенов...
+2026-01-26 01:58:22,628 - core.pipeline - INFO - 🔍 [Command] Начало проверки валидности токенов
+2026-01-26 01:58:22,629 - core.pipeline - INFO - 🔍 [Command] Проверка 7 токенов...
+2026-01-26 01:58:22,704 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:22] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:22,707 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:22] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:22,708 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:22] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:22,712 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 560)
+2026-01-26 01:58:22,715 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:22] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:23,141 - modules.telegram_bot - ERROR - ❌ Telegram API error: 400 - {"ok":false,"error_code":400,"description":"Bad Request: message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message"}
+2026-01-26 01:58:23,450 - core.pipeline - INFO - ✅ [Check] Токен валиден: kenshin_dnd
+2026-01-26 01:58:23,779 - core.pipeline - INFO - ✅ [Check] Токен валиден: kenshin_dnd
+2026-01-26 01:58:24,174 - core.pipeline - INFO - ✅ [Check] Токен валиден: nexox77220
+2026-01-26 01:58:24,518 - core.pipeline - INFO - ✅ [Check] Токен валиден: nexox77220
+2026-01-26 01:58:24,699 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:24] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:24,700 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:24] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:24,701 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:24] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:24,706 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:24] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:25,179 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 560)
+2026-01-26 01:58:25,398 - core.pipeline - INFO - ✅ [Check] Токен валиден: vzarrrr
+2026-01-26 01:58:25,512 - modules.telegram_bot - ERROR - ❌ Telegram API error: 400 - {"ok":false,"error_code":400,"description":"Bad Request: message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message"}
+2026-01-26 01:58:25,726 - core.pipeline - INFO - ✅ [Check] Токен валиден: vzarrrr
+2026-01-26 01:58:26,126 - core.pipeline - INFO - ✅ [Check] Токен валиден: danilandrean
+2026-01-26 01:58:26,458 - core.pipeline - INFO - ✅ [Check] Токен валиден: danilandrean
+2026-01-26 01:58:26,690 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:26] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:26,690 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:26] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:26,696 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:26] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:26,701 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:26] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:26,848 - core.pipeline - INFO - ✅ [Check] Токен валиден: getoavramov
+2026-01-26 01:58:27,177 - core.pipeline - INFO - ✅ [Check] Токен валиден: getoavramov
+2026-01-26 01:58:27,848 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 560)
+2026-01-26 01:58:28,059 - core.pipeline - INFO - ✅ [Check] Токен валиден: youneseethamburger
+2026-01-26 01:58:28,178 - modules.telegram_bot - ERROR - ❌ Telegram API error: 400 - {"ok":false,"error_code":400,"description":"Bad Request: message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message"}
+2026-01-26 01:58:28,407 - core.pipeline - INFO - ✅ [Check] Токен валиден: youneseethamburger
+2026-01-26 01:58:28,707 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:28] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:28,708 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:28] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:28,709 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:28] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:28,713 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:28] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:28,779 - core.pipeline - INFO - ✅ [Check] Токен валиден: shimanomi
+2026-01-26 01:58:29,160 - core.pipeline - INFO - ✅ [Check] Токен валиден: shimanomi
+2026-01-26 01:58:29,279 - core.pipeline - INFO - ✅ [Command] Проверка завершена: 7 валидных, 0 невалидных
+2026-01-26 01:58:29,660 - core.pipeline - INFO - ✅ [Command] Проверка завершена: 7 валидных, 0 невалидных
+2026-01-26 01:58:29,779 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 560)
+2026-01-26 01:58:30,188 - modules.telegram_bot - ERROR - ❌ Telegram API error: 400 - {"ok":false,"error_code":400,"description":"Bad Request: message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message"}
+2026-01-26 01:58:30,709 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:30] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:30,712 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:30] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:30,712 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:30] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:30,716 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:30] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:32,701 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:32] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:32,704 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:32] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:32,705 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:32] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:32,710 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:32] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:34,691 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:34] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:34,692 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:34] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:34,692 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:34] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:34,698 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:34] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:36,770 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:36] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:36,771 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:36] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:36,771 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:36] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:36,780 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:36] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:38,706 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:38] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:38,710 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:38] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:38,711 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:38] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:38,715 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:38] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:40,703 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:40] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:40,707 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:40] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:40,708 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:40] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:40,718 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:40] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:40,806 - modules.telegram_bot - INFO - 📱 Получена команда: menu от пользователя 934727036
+2026-01-26 01:58:41,314 - modules.cloudflare_helper - INFO - ✅ Cloudflare metrics найдены на порту 20242
+2026-01-26 01:58:41,316 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:58:41,819 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 560)
+2026-01-26 01:58:42,705 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:42] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:42,706 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:42] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:42,706 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:42] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:42,712 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:42] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:44,689 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:44] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:44,690 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:44] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:44,694 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:44] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:44,705 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:44] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:46,708 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:46] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:46,711 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:46] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:46,713 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:46] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:46,717 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:46] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:48,705 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:48] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:48,706 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:48] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:48,709 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:48] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:48,710 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:48] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:50,389 - modules.telegram_bot - INFO - 📱 Получено сообщение от 934727036: /start
+2026-01-26 01:58:50,390 - modules.telegram_bot - INFO - 📱 Получена команда: /start
+2026-01-26 01:58:50,391 - modules.cloudflare_helper - INFO - ✅ Cloudflare metrics найдены на порту 20242
+2026-01-26 01:58:50,393 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:58:50,694 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:50] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:50,695 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:50] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:50,700 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:50] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:50,703 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:50] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:50,867 - modules.telegram_bot - INFO - 📱 Получено сообщение от 934727036: /start
+2026-01-26 01:58:50,867 - modules.telegram_bot - INFO - 📱 Получена команда: /start
+2026-01-26 01:58:50,886 - modules.cloudflare_helper - INFO - ✅ Cloudflare metrics найдены на порту 20242
+2026-01-26 01:58:50,888 - modules.cloudflare_helper - INFO - ✅ Cloudflare Tunnel URL (метод 1): https://plumbing-buys-cio-christopher.trycloudflare.com
+2026-01-26 01:58:50,962 - modules.telegram_bot - INFO - ✅ Сообщение отправлено в Telegram (message_id: 563)
+2026-01-26 01:58:51,466 - modules.telegram_bot - INFO - ✅ Сообщение отправлено в Telegram (message_id: 564)
+2026-01-26 01:58:52,701 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:52] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:52,705 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:52] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:52,706 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:52] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:52,709 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:52] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:54,717 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:54] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:54,717 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:54] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:54,719 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:54] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:54,723 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:54] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:58:54,875 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:54] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:58:54,876 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:54] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:58:54,876 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:54] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:58:54,885 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:58:54] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:59:54,778 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:59:54] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:59:54,778 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:59:54] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:59:54,779 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:59:54] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:59:54,783 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:59:54] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 01:59:54,956 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:59:54] "GET /api/tokens/cleaning HTTP/1.1" 200 -
+2026-01-26 01:59:54,966 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:59:54] "GET /api/statistics/today HTTP/1.1" 200 -
+2026-01-26 01:59:54,973 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:59:54] "GET /api/status HTTP/1.1" 200 -
+2026-01-26 01:59:54,977 - werkzeug - INFO - 127.0.0.1 - - [26/Jan/2026 01:59:54] "GET /api/tokens?limit=20 HTTP/1.1" 200 -
+2026-01-26 16:15:55,318 - __main__ - INFO - ============================================================
+2026-01-26 16:15:55,319 - __main__ - INFO - СИСТЕМА ЗАПУЩЕНА
+2026-01-26 16:15:55,319 - __main__ - INFO - ============================================================
+2026-01-26 16:15:55,321 - modules.database - INFO - 📦 База данных инициализирована: data/tokens.db
+2026-01-26 16:15:59,349 - core.pipeline - INFO - ✅ Все модули инициализированы
+2026-01-26 16:15:59,349 - modules.telegram_bot - INFO - ✅ Зарегистрирован обработчик для команды: stats
+2026-01-26 16:15:59,349 - modules.telegram_bot - INFO - ✅ Зарегистрирован обработчик для команды: balance
+2026-01-26 16:15:59,349 - modules.telegram_bot - INFO - ✅ Зарегистрирован обработчик для команды: send_tokens
+2026-01-26 16:15:59,349 - modules.telegram_bot - INFO - ✅ Зарегистрирован обработчик для команды: ready_tokens
+2026-01-26 16:15:59,349 - modules.telegram_bot - INFO - ✅ Зарегистрирован обработчик для команды: status
+2026-01-26 16:15:59,350 - modules.telegram_bot - INFO - ✅ Зарегистрирован обработчик для команды: dashboard_url
+2026-01-26 16:15:59,350 - modules.telegram_bot - INFO - ✅ Зарегистрирован обработчик для команды: check_valid
+2026-01-26 16:15:59,350 - core.pipeline - INFO - ✅ Команды Telegram бота зарегистрированы
+2026-01-26 16:15:59,350 - core.pipeline - INFO - 🚀 Pipeline инициализирован
+2026-01-26 16:15:59,350 - core.pipeline - INFO - 🚀 Запуск Pipeline...
+2026-01-26 16:16:03,382 - core.pipeline - INFO - ⚠️ Cloudflare Tunnel не запущен, Mini App будет недоступен
+2026-01-26 16:16:12,166 - modules.telegram_bot - INFO - ✅ Сообщение отправлено в Telegram (message_id: 583)
+2026-01-26 16:16:12,683 - modules.telegram_bot - INFO - ✅ Сообщение отправлено в Telegram (message_id: 584)
+2026-01-26 16:16:12,684 - modules.telegram_bot - INFO - 🔄 Запуск цикла polling...
+2026-01-26 16:16:12,684 - modules.telegram_bot - INFO - ✅ Telegram polling запущен
+2026-01-26 16:16:12,684 - core.pipeline - INFO - 🔍 [LZT] Запуск мониторинга...
+2026-01-26 16:16:12,684 - core.pipeline - INFO - ▶️ Поток запущен: LZT Monitor
+2026-01-26 16:16:12,685 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:16:12,686 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:16:12,686 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:16:12,686 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:16:12,687 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:16:12,687 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:16:12,687 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:16:12,687 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:16:12,687 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:16:12,687 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:16:12,687 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:16:12,688 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:16:12,688 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:16:12,688 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:16:12,688 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:16:12,688 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:16:12,689 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:16:12,689 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:16:12,689 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:16:12,689 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:16:12,689 - core.pipeline - INFO - ▶️ Потоков запущено: Validator #1 x20
+2026-01-26 16:16:12,690 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:16:12,690 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:16:12,690 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:16:12,690 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:16:12,690 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:16:12,690 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:16:12,690 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:16:12,690 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:16:12,690 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:16:12,691 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:16:12,691 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:16:12,691 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:16:12,691 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:16:12,691 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:16:12,691 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:16:12,692 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:16:12,692 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:16:12,692 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:16:12,692 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:16:12,692 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:16:12,692 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:16:12,692 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:16:12,692 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:16:12,693 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:16:12,693 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:16:12,693 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:16:12,693 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:16:12,693 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:16:12,693 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:16:12,693 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:16:12,693 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:16:12,694 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:16:12,694 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:16:12,694 - core.pipeline - INFO - ▶️ Потоков запущено: Cleaner x20
+2026-01-26 16:16:12,694 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:16:12,694 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:16:12,694 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:16:12,694 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:16:12,694 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:16:12,694 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:16:12,695 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:16:12,695 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:16:12,695 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:16:12,695 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:16:12,695 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:16:12,696 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:16:12,696 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:16:12,696 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:16:12,696 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:16:12,696 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:16:12,696 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:16:12,697 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:16:12,697 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:16:12,697 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:16:12,697 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:16:12,697 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:16:12,698 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:16:12,698 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:16:12,698 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:16:12,698 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:16:12,698 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:16:12,698 - core.pipeline - INFO - ▶️ Потоков запущено: Validator #2 x20
+2026-01-26 16:16:12,699 - core.pipeline - INFO - 📊 [Stats] Запуск отправки статистики...
+2026-01-26 16:16:12,699 - core.pipeline - INFO - ▶️ Поток запущен: Statistics
+2026-01-26 16:16:12,699 - core.pipeline - INFO - ✅ Pipeline запущен успешно! Всего потоков: 62
+2026-01-26 16:16:14,980 - modules.database - INFO - 📦 База данных инициализирована: data/tokens.db
+2026-01-26 16:16:14,981 - dashboard_api - INFO - ✅ Dashboard API инициализирован
+2026-01-26 16:16:14,981 - dashboard_api - INFO - 🌐 Запуск Web Dashboard на http://0.0.0.0:5000
+2026-01-26 16:16:15,004 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.31.49:5000
+2026-01-26 16:16:15,004 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-01-26 16:16:17,985 - modules.database - INFO - 📦 База данных инициализирована: data/tokens.db
+2026-01-26 16:16:23,138 - modules.lzt_monitor - ERROR - ❌ Ошибка запроса к LZT API: HTTPSConnectionPool(host='prod-api.lzt.market', port=443): Read timed out. (read timeout=10)
+2026-01-26 16:16:23,138 - modules.lzt_monitor - ERROR - ❌ Не удалось получить user_id
+2026-01-26 16:16:33,496 - modules.lzt_monitor - ERROR - ❌ Ошибка запроса к LZT API: HTTPSConnectionPool(host='prod-api.lzt.market', port=443): Read timed out. (read timeout=10)
+2026-01-26 16:16:53,837 - modules.lzt_monitor - ERROR - ❌ Ошибка запроса к LZT API: HTTPSConnectionPool(host='prod-api.lzt.market', port=443): Read timed out. (read timeout=10)
+2026-01-26 16:16:53,837 - modules.lzt_monitor - ERROR - ❌ Не удалось получить user_id
+2026-01-26 16:17:04,187 - modules.lzt_monitor - ERROR - ❌ Ошибка запроса к LZT API: HTTPSConnectionPool(host='prod-api.lzt.market', port=443): Read timed out. (read timeout=10)
+2026-01-26 16:17:24,547 - modules.lzt_monitor - ERROR - ❌ Ошибка запроса к LZT API: HTTPSConnectionPool(host='prod-api.lzt.market', port=443): Read timed out. (read timeout=10)
+2026-01-26 16:17:24,547 - modules.lzt_monitor - ERROR - ❌ Не удалось получить user_id
+2026-01-26 16:17:34,896 - modules.lzt_monitor - ERROR - ❌ Ошибка запроса к LZT API: HTTPSConnectionPool(host='prod-api.lzt.market', port=443): Read timed out. (read timeout=10)
+2026-01-26 16:17:55,261 - modules.lzt_monitor - ERROR - ❌ Ошибка запроса к LZT API: HTTPSConnectionPool(host='prod-api.lzt.market', port=443): Read timed out. (read timeout=10)
+2026-01-26 16:17:55,262 - modules.lzt_monitor - ERROR - ❌ Не удалось получить user_id
+2026-01-26 16:18:05,607 - modules.lzt_monitor - ERROR - ❌ Ошибка запроса к LZT API: HTTPSConnectionPool(host='prod-api.lzt.market', port=443): Read timed out. (read timeout=10)
+2026-01-26 16:20:37,079 - __main__ - INFO - ============================================================
+2026-01-26 16:20:37,080 - __main__ - INFO - СИСТЕМА ЗАПУЩЕНА
+2026-01-26 16:20:37,080 - __main__ - INFO - ============================================================
+2026-01-26 16:20:37,081 - modules.database - INFO - 📦 База данных инициализирована: data/tokens.db
+2026-01-26 16:20:41,119 - core.pipeline - INFO - ✅ Все модули инициализированы
+2026-01-26 16:20:41,119 - modules.telegram_bot - INFO - ✅ Зарегистрирован обработчик для команды: stats
+2026-01-26 16:20:41,120 - modules.telegram_bot - INFO - ✅ Зарегистрирован обработчик для команды: balance
+2026-01-26 16:20:41,120 - modules.telegram_bot - INFO - ✅ Зарегистрирован обработчик для команды: send_tokens
+2026-01-26 16:20:41,120 - modules.telegram_bot - INFO - ✅ Зарегистрирован обработчик для команды: ready_tokens
+2026-01-26 16:20:41,120 - modules.telegram_bot - INFO - ✅ Зарегистрирован обработчик для команды: status
+2026-01-26 16:20:41,120 - modules.telegram_bot - INFO - ✅ Зарегистрирован обработчик для команды: dashboard_url
+2026-01-26 16:20:41,120 - modules.telegram_bot - INFO - ✅ Зарегистрирован обработчик для команды: check_valid
+2026-01-26 16:20:41,120 - core.pipeline - INFO - ✅ Команды Telegram бота зарегистрированы
+2026-01-26 16:20:41,120 - core.pipeline - INFO - 🚀 Pipeline инициализирован
+2026-01-26 16:20:41,120 - core.pipeline - INFO - 🚀 Запуск Pipeline...
+2026-01-26 16:20:45,173 - core.pipeline - INFO - ⚠️ Cloudflare Tunnel не запущен, Mini App будет недоступен
+2026-01-26 16:20:53,891 - modules.telegram_bot - INFO - ✅ Сообщение отправлено в Telegram (message_id: 585)
+2026-01-26 16:20:54,508 - modules.telegram_bot - INFO - ✅ Сообщение отправлено в Telegram (message_id: 586)
+2026-01-26 16:20:54,509 - modules.telegram_bot - INFO - 🔄 Запуск цикла polling...
+2026-01-26 16:20:54,509 - modules.telegram_bot - INFO - ✅ Telegram polling запущен
+2026-01-26 16:20:54,510 - core.pipeline - INFO - 🔍 [LZT] Запуск мониторинга...
+2026-01-26 16:20:54,510 - core.pipeline - INFO - ▶️ Поток запущен: LZT Monitor
+2026-01-26 16:20:54,511 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:20:54,511 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:20:54,511 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:20:54,512 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:20:54,512 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:20:54,512 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:20:54,512 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:20:54,513 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:20:54,513 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:20:54,513 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:20:54,513 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:20:54,513 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:20:54,513 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:20:54,514 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:20:54,514 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:20:54,514 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:20:54,514 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:20:54,514 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:20:54,514 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:20:54,515 - core.pipeline - INFO - ✅ [Validator #1] Запуск валидации...
+2026-01-26 16:20:54,515 - core.pipeline - INFO - ▶️ Потоков запущено: Validator #1 x20
+2026-01-26 16:20:54,515 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:20:54,515 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:20:54,515 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:20:54,515 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:20:54,515 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:20:54,515 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:20:54,516 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:20:54,516 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:20:54,516 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:20:54,516 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:20:54,516 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:20:54,516 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:20:54,516 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:20:54,516 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:20:54,516 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:20:54,517 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:20:54,517 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:20:54,517 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:20:54,517 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:20:54,517 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:20:54,517 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:20:54,517 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:20:54,517 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:20:54,518 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:20:54,518 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:20:54,518 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:20:54,518 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:20:54,518 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:20:54,518 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:20:54,518 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:20:54,518 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:20:54,518 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:20:54,519 - core.pipeline - INFO - 🧹 [Cleaner] Запуск очистки...
+2026-01-26 16:20:54,519 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:20:54,519 - core.pipeline - INFO - ▶️ Потоков запущено: Cleaner x20
+2026-01-26 16:20:54,519 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:20:54,519 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:20:54,519 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:20:54,519 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:20:54,520 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:20:54,520 - core.pipeline - INFO - 🔐 [Cleaner] Прокси включены
+2026-01-26 16:20:54,520 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:20:54,520 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:20:54,520 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:20:54,520 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:20:54,520 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:20:54,521 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:20:54,521 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:20:54,521 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:20:54,521 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:20:54,521 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:20:54,522 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:20:54,522 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:20:54,522 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:20:54,522 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:20:54,522 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:20:54,522 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:20:54,522 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:20:54,523 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:20:54,523 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:20:54,523 - core.pipeline - INFO - 🔍 [Validator #2] Запуск финальной валидации...
+2026-01-26 16:20:54,523 - core.pipeline - INFO - ▶️ Потоков запущено: Validator #2 x20
+2026-01-26 16:20:54,523 - core.pipeline - INFO - 📊 [Stats] Запуск отправки статистики...
+2026-01-26 16:20:54,523 - core.pipeline - INFO - ▶️ Поток запущен: Statistics
+2026-01-26 16:20:54,524 - core.pipeline - INFO - ✅ Pipeline запущен успешно! Всего потоков: 62
+2026-01-26 16:20:56,652 - modules.database - INFO - 📦 База данных инициализирована: data/tokens.db
+2026-01-26 16:20:56,652 - dashboard_api - INFO - ✅ Dashboard API инициализирован
+2026-01-26 16:20:56,652 - dashboard_api - INFO - 🌐 Запуск Web Dashboard на http://0.0.0.0:5000
+2026-01-26 16:20:58,004 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://10.137.67.198:5000
+2026-01-26 16:20:58,005 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-01-26 16:20:59,655 - modules.database - INFO - 📦 База данных инициализирована: data/tokens.db
+2026-01-26 16:20:59,844 - modules.telegram_bot - INFO - 📱 Получена команда: status от пользователя 934727036
+2026-01-26 16:21:01,393 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 585)
+2026-01-26 16:21:05,987 - modules.telegram_bot - INFO - 📱 Получена команда: menu от пользователя 934727036
+2026-01-26 16:21:23,246 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 585)
+2026-01-26 16:21:23,843 - modules.telegram_bot - INFO - 📱 Получена команда: menu от пользователя 934727036
+2026-01-26 16:21:41,179 - modules.telegram_bot - ERROR - ❌ Telegram API error: 400 - {"ok":false,"error_code":400,"description":"Bad Request: message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message"}
+2026-01-26 16:21:41,180 - modules.telegram_bot - INFO - 📱 Получено сообщение от 934727036: /start
+2026-01-26 16:21:41,181 - modules.telegram_bot - INFO - 📱 Получена команда: /start
+2026-01-26 16:21:57,906 - modules.telegram_bot - INFO - ✅ Сообщение отправлено в Telegram (message_id: 588)
+2026-01-26 16:21:58,510 - modules.telegram_bot - INFO - 📱 Получена команда: balance от пользователя 934727036
+2026-01-26 16:22:00,488 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 585)
+2026-01-26 16:22:18,472 - modules.telegram_bot - INFO - 📱 Получена команда: check_valid от пользователя 934727036
+2026-01-26 16:22:19,033 - core.pipeline - INFO - 🔍 [Command] Начало проверки валидности токенов
+2026-01-26 16:22:19,035 - core.pipeline - INFO - 🔍 [Command] Проверка 7 токенов...
+2026-01-26 16:22:19,700 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 588)
+2026-01-26 16:22:20,361 - core.pipeline - WARNING - ❌ [Check] Токен невалиден: MTIzMDg1NTkyNzgyNTk1...
+2026-01-26 16:22:20,363 - modules.database - INFO - 🔄 Статус токена обновлен: invalid
+2026-01-26 16:22:21,096 - core.pipeline - WARNING - ❌ [Check] Токен невалиден: MTMzOTk0ODExNjc5NDgw...
+2026-01-26 16:22:21,099 - modules.database - INFO - 🔄 Статус токена обновлен: invalid
+2026-01-26 16:22:22,252 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 588)
+2026-01-26 16:22:22,477 - core.pipeline - INFO - ✅ [Check] Токен валиден: vzarrrr
+2026-01-26 16:22:23,222 - core.pipeline - INFO - ✅ [Check] Токен валиден: danilandrean
+2026-01-26 16:22:23,943 - core.pipeline - INFO - ✅ [Check] Токен валиден: getoavramov
+2026-01-26 16:22:25,012 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 588)
+2026-01-26 16:22:25,239 - core.pipeline - INFO - ✅ [Check] Токен валиден: youneseethamburger
+2026-01-26 16:22:25,983 - core.pipeline - INFO - ✅ [Check] Токен валиден: shimanomi
+2026-01-26 16:22:26,484 - core.pipeline - INFO - ✅ [Command] Проверка завершена: 5 валидных, 2 невалидных
+2026-01-26 16:22:27,100 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 588)
+2026-01-26 16:22:41,053 - modules.telegram_bot - INFO - 📱 Получена команда: menu от пользователя 934727036
+2026-01-26 16:22:58,355 - modules.telegram_bot - INFO - ✅ Сообщение отредактировано (message_id: 588)
+2026-01-26 16:22:58,880 - modules.telegram_bot - INFO - 📱 Получена команда: menu от пользователя 934727036
+2026-01-26 16:23:16,410 - modules.telegram_bot - ERROR - ❌ Telegram API error: 400 - {"ok":false,"error_code":400,"description":"Bad Request: message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message"}

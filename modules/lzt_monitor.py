@@ -233,3 +233,41 @@ class LZTMonitor:
         # Тут можно добавить дополнительную логику
         
         return None
+    
+    def start_monitoring(self, callback_func):
+        """
+        Запускает непрерывный мониторинг новых покупок
+        
+        Args:
+            callback_func: Функция которая будет вызвана при новых покупках
+                          Принимает список словарей с информацией о покупках
+        """
+        logger.info(f"🔍 Запуск мониторинга LZT Market (интервал: {self.check_interval}с)")
+        
+        # Первая проверка баланса
+        self.check_balance_alert()
+        
+        while True:
+            try:
+                # Получаем новые покупки
+                new_purchases = self.get_new_purchases()
+                
+                if new_purchases:
+                    logger.info(f"📦 Найдено новых покупок: {len(new_purchases)}")
+                    callback_func(new_purchases)
+                
+                # Периодически проверяем баланс (каждые 10 проверок)
+                if len(self.processed_items) % 10 == 0:
+                    if self.check_balance_alert():
+                        # Можно добавить вызов функции для отправки уведомления
+                        pass
+                
+                # Ждем до следующей проверки
+                time.sleep(self.check_interval)
+                
+            except KeyboardInterrupt:
+                logger.info("⏹️ Остановка мониторинга LZT")
+                break
+            except Exception as e:
+                logger.error(f"❌ Ошибка в мониторинге LZT: {e}")
+                time.sleep(self.check_interval)
