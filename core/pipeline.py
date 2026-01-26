@@ -198,29 +198,26 @@ class TokenPipeline:
                 )
                 return
             
-            # Берем максимум токенов
-            max_tokens = self.config['telegram'].get('max_tokens', 50)
-            tokens_to_send = valid_tokens[:max_tokens]
+            logger.info(f"📤 [Command] Отправка {len(valid_tokens)} токенов...")
             
-            logger.info(f"📤 [Command] Отправка {len(tokens_to_send)} токенов...")
-            
-            # Отправляем файл с токенами
-            success = self.telegram.send_tokens_file(tokens_to_send, chat_id=chat_id)
+            # Отправляем ВСЕ токены одним файлом
+            success = self.telegram.send_tokens_file(valid_tokens, chat_id=chat_id)
             
             if success:
+                sent_tokens = valid_tokens
                 # Помечаем отправленные токены как 'sent'
-                for token in tokens_to_send:
+                for token in sent_tokens:
                     self.db.update_token_status(
                         token=token,
                         status='sent'
                     )
                 
                 # Обновляем статистику
-                self.db.update_statistics(tokens_sent=len(tokens_to_send))
+                self.db.update_statistics(tokens_sent=len(sent_tokens))
                 
                 # Отправляем уведомление об успехе
                 self.telegram.send_tokens_sent_notification(
-                    count=len(tokens_to_send),
+                    count=len(sent_tokens),
                     invalid_count=len(invalid_tokens),
                     chat_id=chat_id
                 )
@@ -229,7 +226,7 @@ class TokenPipeline:
                 self.ready_tokens_notification_sent = False
                 logger.info("🔄 [Command] Флаг уведомлений сброшен после отправки токенов")
                 
-                logger.info(f"✅ [Command] Токены успешно отправлены: {len(tokens_to_send)}")
+                logger.info(f"✅ [Command] Токены успешно отправлены: {len(sent_tokens)}")
             else:
                 self.telegram.send_error("Send Tokens", "Не удалось отправить файл с токенами")
                 
