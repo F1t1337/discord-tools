@@ -168,20 +168,25 @@ class LZTMonitor:
         purchases = self.get_purchased_accounts(category_id=self.DISCORD_CATEGORY_ID)
         new_purchases = []
         
+        logger.debug(f"📋 [LZT] Получено покупок из API: {len(purchases)}")
+        
         for purchase in purchases:
             item_id = purchase.get('item_id')
             
             # Пропускаем уже обработанные
             if item_id in self.processed_items:
+                logger.debug(f"⏭️ [LZT] Item {item_id} уже обработан ранее")
                 continue
             
-            # Получаем данные аккаунта
-            item_data = purchase.get('item', {})
+            logger.debug(f"🔍 [LZT] Проверка item {item_id}")
             
-            # Извлекаем Discord токен из описания
-            token = self._extract_discord_token(item_data)
+            # ИСПРАВЛЕНО: Передаем весь purchase, а не только item
+            # Извлекаем Discord токен
+            token = self._extract_discord_token(purchase)
             
             if token:
+                logger.debug(f"✅ [LZT] Токен найден для item {item_id}")
+                
                 # Проверяем есть ли токен уже в БД (если передана БД)
                 if self.database:
                     existing = self.database.get_token_info(token)
@@ -194,7 +199,7 @@ class LZTMonitor:
                     'item_id': item_id,
                     'token': token,
                     'price': purchase.get('price', 0),
-                    'username': item_data.get('title', 'Unknown'),
+                    'username': purchase.get('title', 'Unknown'),  # Берем title из purchase
                     'purchase_date': purchase.get('purchase_date')
                 }
                 
@@ -202,36 +207,53 @@ class LZTMonitor:
                 self.processed_items.add(item_id)
                 
                 logger.info(f"🆕 Новая покупка: {purchase_info['username']} за {purchase_info['price']} ₽")
+            else:
+                logger.debug(f"⏭️ [LZT] Токен не найден для item {item_id}: {purchase.get('title', 'Unknown')}")
+        
+        logger.debug(f"📊 [LZT] Обработано: всего={len(purchases)}, новых={len(new_purchases)}, обработанных ранее={len(self.processed_items)}")
         
         return new_purchases
     
-    def _extract_discord_token(self, item_data: Dict) -> Optional[str]:
+    def _extract_discord_token(self, purchase_data: Dict) -> Optional[str]:
         """
-        Извлекает Discord токен из данных аккаунта
+        Извлекает Discord токен из данных покупки
         
         Args:
-            item_data: Данные аккаунта из API
+            purchase_data: Полные данные покупки из API
             
         Returns:
             Discord токен или None
         """
-        # Токен может быть в разных полях
-        # Проверяем основные места
+        # Токен хранится в поле 'login'!
+        login = purchase_data.get('login', '')
+        if login and len(login) > 50:
+            logger.debug(f"✅ [LZT] Токен найден в поле 'login' (длина: {len(login)})")
+            return login.strip()
         
-        # 1. В description
-        description = item_data.get('description', '')
-        if description and len(description) > 50:
-            # Discord токены обычно длинные строки
-            return description.strip()
+        # Дополнительные проверки на случай других форматов
+        possible_fields = [
+            'content',
+            'description',
+            'token',
+            'discord_token',
+        ]
         
-        # 2. В title (иногда продавцы пишут там)
-        title = item_data.get('title', '')
-        if title and len(title) > 50 and '.' in title:
-            return title.strip()
+        for field in possible_fields:
+            value = purchase_data.get(field, '')
+            if value and isinstance(value, str) and len(value) > 50:
+                logger.debug(f"✅ [LZT] Токен найден в поле '{field}' (длина: {len(value)})")
+                return value.strip()
         
-        # 3. В других полях с учетными данными
-        # Тут можно добавить дополнительную логику
+        # Проверяем вложенный объект loginData
+        login_data = purchase_data.get('loginData', {})
+        if login_data and isinstance(login_data, dict):
+            login_value = login_data.get('login', '')
+            if login_value and len(login_value) > 50:
+                logger.debug(f"✅ [LZT] Токен найден в loginData['login'] (длина: {len(login_value)})")
+                return login_value.strip()
         
+        # Если ничего не нашли
+        logger.debug(f"⚠️ [LZT] Токен не найден. Доступные поля: {list(purchase_data.keys())[:10]}...")
         return None
     
     def start_monitoring(self, callback_func):
