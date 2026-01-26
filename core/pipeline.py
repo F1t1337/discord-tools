@@ -236,13 +236,12 @@ class TokenPipeline:
     
     def _handle_check_valid_command(self, chat_id: str = None, message_id: int = None):
         """
-        НОВОЕ: Обработчик команды проверки валидности готовых токенов
+        ОБНОВЛЕНО: Обработчик команды продвинутой проверки токенов
         
-        Проверяет все токены в статусе 'ready' на валидность
-        Невалидные токены удаляются из базы
+        Использует DiscordAdvancedChecker для полного анализа
         """
         try:
-            logger.info("🔍 [Command] Начало проверки валидности токенов")
+            logger.info("🔍 [Command] Начало продвинутой проверки токенов")
             
             # Получаем все готовые токены
             ready_tokens = self.db.get_ready_tokens(limit=1000)
@@ -258,73 +257,96 @@ class TokenPipeline:
                 return
             
             total = len(ready_tokens)
+            tokens_list = [t['token'] for t in ready_tokens]
+            
             logger.info(f"🔍 [Command] Проверка {total} токенов...")
             
             # Отправляем/редактируем сообщение о начале проверки
             start_text = (
-                f"🔍 <b>Проверка валидности</b>\n\n"
-                f"Начинаю проверку {total} токенов...\n\n"
+                f"🔍 <b>Продвинутая проверка токенов</b>\n\n"
+                f"Начинаю детальный анализ {total} токенов...\n\n"
+                f"⏳ Проверяю:\n"
+                f"• Валидность\n"
+                f"• Проспам (последние сообщения)\n"
+                f"• Флаги и лимиты\n"
+                f"• Биллинг и телефон\n"
+                f"• Гео и tier\n\n"
                 f"Это может занять некоторое время."
             )
             
             if message_id:
                 self.telegram.edit_message(message_id, start_text, chat_id=chat_id)
             else:
-                # Если нет message_id - отправляем новое и запоминаем его
                 result = self.telegram.send_message(start_text, chat_id=chat_id)
                 if result:
                     message_id = result.get('result', {}).get('message_id')
             
-            valid_count = 0
-            invalid_count = 0
+            # Импортируем чекер из модулей
+            from modules.advanced_checker import DiscordAdvancedChecker
             
-            for i, token_data in enumerate(ready_tokens, 1):
-                token = token_data['token']
-                
-                # Обновляем прогресс каждые 3 токена
-                if i % 3 == 0 and message_id:
-                    progress_text = (
-                        f"🔍 <b>Проверка валидности</b>\n\n"
-                        f"Проверено: {i}/{total}\n"
-                        f"✅ Валидных: {valid_count}\n"
-                        f"❌ Невалидных: {invalid_count}\n\n"
-                        f"⏳ Продолжаю проверку..."
-                    )
-                    self.telegram.edit_message(message_id, progress_text, chat_id=chat_id)
-                
-                # Валидируем
-                is_valid, username = self.validator.validate_token(token)
-                
-                if is_valid:
-                    valid_count += 1
-                    logger.info(f"✅ [Check] Токен валиден: {username}")
-                else:
-                    invalid_count += 1
-                    logger.warning(f"❌ [Check] Токен невалиден: {token[:20]}...")
-                    
-                    # Помечаем как invalid и удаляем
+            # Создаем чекер с 20 потоками
+            checker = DiscordAdvancedChecker(threads=20)
+            
+            # Запускаем проверку
+            result = checker.check_tokens(tokens_list)
+            stats = result['statistics']
+            results = result['results']
+            
+            # Обновляем БД - помечаем невалидные как invalid
+            for res in results:
+                if not res['valid']:
                     self.db.update_token_status(
-                        token=token,
+                        token=res['token'],
                         status='invalid',
-                        error='Failed validation check'
+                        error='Failed advanced validation check'
                     )
+            
+            logger.info(f"✅ [Command] Проверка завершена: {stats['valid']} валидных, {stats['invalid']} невалидных")
+            
+            # Формируем детальный отчет
+            report_text = (
+                f"📊 <b>Результаты проверки</b>\n\n"
+                f"📦 Всего: {stats['total']}\n"
+                f"🔀 Дубликаты по строкам: {stats['line_duplicates']}\n"
+                f"🔄 Дубликаты по аккаунтам: {stats['account_duplicates']}\n"
+                f"✅ Валидных: {stats['valid']}\n"
+                f"❌ Невалидных: {stats['invalid']}\n"
+                f"🇷🇺 СНГ: {stats['cis']}\n\n"
                 
-                # Задержка между проверками
-                time.sleep(0.5)
-            
-            logger.info(f"✅ [Command] Проверка завершена: {valid_count} валидных, {invalid_count} невалидных")
-            
-            # Отправляем/редактируем финальный результат
-            self.telegram.send_validation_result(
-                total=total,
-                valid=valid_count,
-                invalid=invalid_count,
-                chat_id=chat_id,
-                message_id=message_id
+                f"📁 <b>Проспам:</b>\n"
+                f"• Проспам: {stats['spam']['by_bot']} ✉️\n"
+                f"• Непроспам: {stats['spam']['non_spam_by_bot']} 🏆\n"
+                f"• Пустых: {stats['spam']['empty']} 💨\n\n"
+                
+                f"📁 <b>Флаги:</b>\n"
+                f"• Локнутые: {stats['flags']['locked']} ⛔️\n"
+                f"• Спаммеры: {stats['flags']['spammer']} 🚫\n"
+                f"• Карантин: {stats['flags']['quarantine']} 🦠\n"
+                f"• Лимиты: {stats['flags']['limited']} ⚠️\n\n"
+                
+                f"📁 <b>Аккаунты:</b>\n"
+                f"• Биллинги: {stats['billing']['has_billing']} 💳\n"
+                f"• С телефоном: {stats['billing']['has_phone']} 📱\n"
+                f"• Без телефона: {stats['billing']['no_phone']} 📵\n\n"
+                
+                f"📁 <b>ГЕО непроспам:</b>\n"
+                f"• Тир 1: {stats['geo']['tier1']} 🥇\n"
+                f"• Тир 2: {stats['geo']['tier2']} 🥈\n"
+                f"• Тир 3: {stats['geo']['tier3']} 🥉\n\n"
+                
+                f"📝 Всего чатов: {stats['chats']['total']}\n"
+                f"🚫 Исключённые: {stats['chats']['excluded']}\n"
+                f"🌊 Время: {stats['time']:.2f} с."
             )
             
+            # Отправляем/редактируем результат
+            if message_id:
+                self.telegram.edit_message(message_id, report_text, chat_id=chat_id)
+            else:
+                self.telegram.send_message(report_text, chat_id=chat_id)
+            
         except Exception as e:
-            logger.error(f"❌ [Command] Ошибка проверки валидности: {e}")
+            logger.error(f"❌ [Command] Ошибка продвинутой проверки: {e}")
             if message_id:
                 self.telegram.edit_message(
                     message_id,
