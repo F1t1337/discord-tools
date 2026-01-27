@@ -48,6 +48,7 @@ class Database:
                     token TEXT NOT NULL UNIQUE,
                     username TEXT,
                     lzt_item_id INTEGER,
+                    seller_id INTEGER,
                     price REAL,
                     status TEXT NOT NULL DEFAULT 'new',
                     created_at REAL NOT NULL,
@@ -74,6 +75,21 @@ class Database:
                 )
             """)
             
+            # Таблица статистики продавцов
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS seller_statistics (
+                    seller_id INTEGER PRIMARY KEY,
+                    seller_username TEXT,
+                    total_bought INTEGER DEFAULT 0,
+                    total_valid INTEGER DEFAULT 0,
+                    total_invalid INTEGER DEFAULT 0,
+                    total_spent REAL DEFAULT 0,
+                    valid_percent REAL DEFAULT 0,
+                    last_purchase_at REAL,
+                    created_at REAL NOT NULL
+                )
+            """)
+            
             # Таблица логов
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS logs (
@@ -94,13 +110,16 @@ class Database:
     
     # ==================== РАБОТА С ТОКЕНАМИ ====================
     
-    def add_token(self, token: str, lzt_item_id: int = None, price: float = None) -> Optional[int]:
+    def add_token(self, token: str, lzt_item_id: int = None, seller_id: int = None, 
+                  seller_username: str = None, price: float = None) -> Optional[int]:
         """
         Добавляет новый токен в базу
         
         Args:
             token: Discord токен
             lzt_item_id: ID товара с LZT
+            seller_id: ID продавца
+            seller_username: Username продавца
             price: Цена покупки
             
         Returns:
@@ -110,12 +129,17 @@ class Database:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
-                    INSERT INTO tokens (token, lzt_item_id, price, status, created_at)
-                    VALUES (?, ?, ?, 'new', ?)
-                """, (token, lzt_item_id, price, datetime.now().timestamp()))
+                    INSERT INTO tokens (token, lzt_item_id, seller_id, price, status, created_at)
+                    VALUES (?, ?, ?, ?, 'new', ?)
+                """, (token, lzt_item_id, seller_id, price, datetime.now().timestamp()))
                 
                 token_id = cursor.lastrowid
-                logger.info(f"➕ Токен добавлен в БД: ID={token_id}")
+                
+                # Обновляем статистику продавца
+                if seller_id:
+                    self._update_seller_stats_purchase(seller_id, seller_username, price)
+                
+                logger.info(f"➕ Токен добавлен в БД: ID={token_id}, Seller={seller_id}")
                 return token_id
                 
         except sqlite3.IntegrityError:
@@ -417,6 +441,128 @@ class Database:
 
 
 # Пример использования
+    
+    # ==================== СТАТИСТИКА ПРОДАВЦОВ ====================
+    
+    def _update_seller_stats_purchase(self, seller_id: int, seller_username: str = None, price: float = None):
+        """Обновляет статистику продавца при покупке"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Проверяем существует ли продавец
+                cursor.execute("SELECT seller_id FROM seller_statistics WHERE seller_id = ?", (seller_id,))
+                exists = cursor.fetchone()
+                
+                if exists:
+                    # Обновляем существующую запись
+                    cursor.execute("""
+                        UPDATE seller_statistics
+                        SET total_bought = total_bought + 1,
+                            total_spent = total_spent + ?,
+                            last_purchase_at = ?,
+                            seller_username = COALESCE(?, seller_username)
+                        WHERE seller_id = ?
+                    """, (price or 0, datetime.now().timestamp(), seller_username, seller_id))
+                else:
+                    # Создаем новую запись
+                    cursor.execute("""
+                        INSERT INTO seller_statistics 
+                        (seller_id, seller_username, total_bought, total_spent, last_purchase_at, created_at)
+                        VALUES (?, ?, 1, ?, ?, ?)
+                    """, (seller_id, seller_username, price or 0, datetime.now().timestamp(), datetime.now().timestamp()))
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка обновления статистики продавца: {e}")
+    
+    def update_seller_stats_validation(self, seller_id: int, is_valid: bool):
+        """Обновляет статистику продавца после валидации"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                if is_valid:
+                    cursor.execute("""
+                        UPDATE seller_statistics
+                        SET total_valid = total_valid + 1
+                        WHERE seller_id = ?
+                    """, (seller_id,))
+                else:
+                    cursor.execute("""
+                        UPDATE seller_statistics
+                        SET total_invalid = total_invalid + 1
+                        WHERE seller_id = ?
+                    """, (seller_id,))
+                
+                # Пересчитываем процент валидности
+                cursor.execute("""
+                    UPDATE seller_statistics
+                    SET valid_percent = CASE 
+                        WHEN (total_valid + total_invalid) > 0 
+                        THEN (total_valid * 100.0) / (total_valid + total_invalid)
+                        ELSE 0
+                    END
+                    WHERE seller_id = ?
+                """, (seller_id,))
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка обновления валидации продавца: {e}")
+    
+    def get_seller_statistics(self, limit: int = 20) -> List[Dict]:
+        """
+        Получает статистику по продавцам
+        
+        Args:
+            limit: Максимальное количество продавцов
+            
+        Returns:
+            Список словарей со статистикой продавцов
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT 
+                        seller_id,
+                        seller_username,
+                        total_bought,
+                        total_valid,
+                        total_invalid,
+                        total_spent,
+                        valid_percent,
+                        last_purchase_at
+                    FROM seller_statistics
+                    WHERE total_bought > 0
+                    ORDER BY total_bought DESC
+                    LIMIT ?
+                """, (limit,))
+                
+                rows = cursor.fetchall()
+                return [dict(row) for row in rows]
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения статистики продавцов: {e}")
+            return []
+    
+    def get_seller_by_id(self, seller_id: int) -> Optional[Dict]:
+        """Получает статистику конкретного продавца"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT *
+                    FROM seller_statistics
+                    WHERE seller_id = ?
+                """, (seller_id,))
+                
+                row = cursor.fetchone()
+                return dict(row) if row else None
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения продавца: {e}")
+            return None
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     
