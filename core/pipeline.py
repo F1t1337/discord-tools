@@ -108,23 +108,10 @@ class TokenPipeline:
         self.telegram.register_command_handler('run_checker', self._handle_run_checker_command)
         self.telegram.register_command_handler('check_valid', self._handle_check_valid_command)
         self.telegram.register_command_handler('seller_stats', self._handle_seller_stats_command)
-        self.telegram.register_command_handler('start', self._handle_start_command)
         
         logger.info("✅ Команды Telegram бота зарегистрированы")
     
     # ==================== ОБРАБОТЧИКИ КОМАНД ====================
-    
-    
-    def _handle_start_command(self, chat_id: str = None, message_id: int = None):
-        """Обработчик команды /start - показывает главное меню"""
-        if not self._check_access(chat_id):
-            logger.warning(f"🚫 Попытка доступа от неавторизованного пользователя: {chat_id}")
-            return
-        
-        try:
-            self.telegram.send_main_menu(chat_id=chat_id)
-        except Exception as e:
-            logger.error(f"❌ Ошибка отправки меню: {e}")
     
     def _handle_stats_command(self, chat_id: str = None, message_id: int = None):
         """Обработчик команды статистики"""

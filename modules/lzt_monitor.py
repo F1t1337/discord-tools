@@ -35,7 +35,6 @@ class LZTMonitor:
         self.last_check_time = None
         self.processed_items = set()  # ID уже обработанных покупок
         self.user_id = None  # ID пользователя (получим при первом запросе)
-        self.last_balance_alert_sent = False  # Флаг отправки уведомления о балансе
         
     def _make_request(self, endpoint: str, params: Dict = None) -> Optional[Dict]:
         """
@@ -89,26 +88,14 @@ class LZTMonitor:
         """
         Проверяет баланс и возвращает True если нужно отправить уведомление
         
-        Отправляет уведомление только один раз, пока баланс не пополнится
-        
         Returns:
-            True если баланс ниже минимального И уведомление еще не отправлялось
+            True если баланс ниже минимального
         """
         balance = self.get_balance()
         
-        if balance is not None:
-            if balance < self.min_balance_alert:
-                # Баланс низкий
-                if not self.last_balance_alert_sent:
-                    # Уведомление еще не отправлялось
-                    logger.warning(f"⚠️ Низкий баланс LZT: {balance} ₽ (минимум: {self.min_balance_alert} ₽)")
-                    self.last_balance_alert_sent = True
-                    return True
-            else:
-                # Баланс нормальный - сбрасываем флаг
-                if self.last_balance_alert_sent:
-                    logger.info(f"✅ Баланс LZT пополнен: {balance} ₽")
-                    self.last_balance_alert_sent = False
+        if balance is not None and balance < self.min_balance_alert:
+            logger.warning(f"⚠️ Низкий баланс LZT: {balance} ₽ (минимум: {self.min_balance_alert} ₽)")
+            return True
         
         return False
     
