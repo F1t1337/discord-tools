@@ -56,7 +56,16 @@ class TokenPipeline:
         # Потоки для каждого этапа
         self.threads = []
         
+        # Разрешенный chat_id из конфига
+        self.allowed_chat_id = str(self.config['telegram']['chat_id'])
+        
         logger.info("🚀 Pipeline инициализирован")
+    
+    def _check_access(self, chat_id: str) -> bool:
+        """Проверяет имеет ли пользователь доступ к боту"""
+        if not chat_id:
+            return False
+        return str(chat_id) == self.allowed_chat_id
     
     def _init_modules(self):
         """Инициализирует все модули"""
@@ -106,6 +115,11 @@ class TokenPipeline:
     
     def _handle_stats_command(self, chat_id: str = None, message_id: int = None):
         """Обработчик команды статистики"""
+        # Проверка доступа
+        if not self._check_access(chat_id):
+            logger.warning(f"🚫 Попытка доступа от неавторизованного пользователя: {chat_id}")
+            return
+        
         try:
             stats = self.db.get_today_statistics()
             self.telegram.send_statistics(stats, chat_id=chat_id, message_id=message_id)
@@ -115,6 +129,10 @@ class TokenPipeline:
     
     def _handle_balance_command(self, chat_id: str = None, message_id: int = None):
         """Обработчик команды баланса"""
+        if not self._check_access(chat_id):
+            logger.warning(f"🚫 Попытка доступа от неавторизованного пользователя: {chat_id}")
+            return
+        
         try:
             balance = self.lzt_monitor.get_balance()
             if balance is not None:
@@ -137,6 +155,10 @@ class TokenPipeline:
         ОБНОВЛЕНО: Убрано ограничение на минимальное количество токенов
         Теперь можно отправить даже 1 токен
         """
+        if not self._check_access(chat_id):
+            logger.warning(f"🚫 Попытка доступа от неавторизованного пользователя: {chat_id}")
+            return
+        
         try:
             logger.info("📤 [Command] Начало обработки команды send_tokens")
             
@@ -242,6 +264,10 @@ class TokenPipeline:
         
         Проверяет готовые токены на проспам и валидность БЕЗ удаления невалидных
         """
+        if not self._check_access(chat_id):
+            logger.warning(f"🚫 Попытка доступа от неавторизованного пользователя: {chat_id}")
+            return
+        
         try:
             logger.info("🔍 [Command] Запуск продвинутого чекера")
             
@@ -349,6 +375,10 @@ class TokenPipeline:
         
         Использует обычный validator, УДАЛЯЕТ невалидные токены
         """
+        if not self._check_access(chat_id):
+            logger.warning(f"🚫 Попытка доступа от неавторизованного пользователя: {chat_id}")
+            return
+        
         try:
             logger.info("🔍 [Command] Начало проверки валидности")
             
@@ -448,6 +478,10 @@ class TokenPipeline:
     
     def _handle_ready_tokens_command(self, chat_id: str = None, message_id: int = None):
         """Обработчик команды информации о готовых токенах"""
+        if not self._check_access(chat_id):
+            logger.warning(f"🚫 Попытка доступа от неавторизованного пользователя: {chat_id}")
+            return
+        
         try:
             ready_tokens = self.db.get_ready_tokens(limit=1000)
             count = len(ready_tokens)
@@ -460,6 +494,10 @@ class TokenPipeline:
     
     def _handle_status_command(self, chat_id: str = None, message_id: int = None):
         """Обработчик команды статуса системы"""
+        if not self._check_access(chat_id):
+            logger.warning(f"🚫 Попытка доступа от неавторизованного пользователя: {chat_id}")
+            return
+        
         try:
             # Получаем статистику
             stats = self.db.get_today_statistics()
@@ -484,6 +522,10 @@ class TokenPipeline:
     
     def _handle_seller_stats_command(self, chat_id: str = None, message_id: int = None):
         """Обработчик команды статистики продавцов"""
+        if not self._check_access(chat_id):
+            logger.warning(f"🚫 Попытка доступа от неавторизованного пользователя: {chat_id}")
+            return
+        
         try:
             logger.info("📊 [Command] Запрос статистики продавцов")
             
@@ -529,6 +571,10 @@ class TokenPipeline:
     
     def _handle_dashboard_url_command(self, chat_id: str = None, message_id: int = None):
         """Обработчик команды получения Dashboard URL"""
+        if not self._check_access(chat_id):
+            logger.warning(f"🚫 Попытка доступа от неавторизованного пользователя: {chat_id}")
+            return
+        
         try:
             # Получаем Cloudflare URL
             tunnel_url = self.cloudflare.get_public_url()
