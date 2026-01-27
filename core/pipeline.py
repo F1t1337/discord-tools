@@ -10,6 +10,7 @@ from modules.validator import TokenValidator
 from modules.cleaner import process_token
 from modules.database import Database
 from modules.telegram_bot import TelegramBot
+from modules.cloudflare_helper import CloudflareHelper
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +24,8 @@ class TokenPipeline:
     2. Validator #1 -> Первая проверка
     3. Cleaner -> Очистка токенов
     4. Validator #2 -> Финальная проверка
-    5. Database -> Сохранение
-    6. Telegram -> Отправка пакетов
+    5. Database -> Сохранение как 'ready'
+    6. Telegram -> РУЧНАЯ отправка по кнопке
     """
     
     def __init__(self, config: Dict):
@@ -43,8 +44,14 @@ class TokenPipeline:
         self.cleaned_queue = Queue()         # Очищенные токены
         self.ready_queue = Queue()           # Готовые к отправке
         
+        # Флаг для отслеживания уведомлений о готовых токенах
+        self.ready_tokens_notification_sent = False
+        
         # Инициализация модулей
         self._init_modules()
+        
+        # Регистрируем команды бота
+        self._register_bot_commands()
         
         # Потоки для каждого этапа
         self.threads = []
@@ -53,11 +60,15 @@ class TokenPipeline:
     
     def _init_modules(self):
         """Инициализирует все модули"""
+        # Database (нужна для LZT Monitor)
+        self.db = Database(self.config['database']['path'])
+        
         # LZT Monitor
         self.lzt_monitor = LZTMonitor(
             api_token=self.config['lzt']['api_token'],
             check_interval=self.config['lzt']['check_interval'],
-            min_balance_alert=self.config['lzt']['min_balance_alert']
+            min_balance_alert=self.config['lzt']['min_balance_alert'],
+            database=self.db  # Передаем БД для проверки дубликатов
         )
         
         # Validator
@@ -66,16 +77,403 @@ class TokenPipeline:
             max_retries=self.config['validator']['max_retries']
         )
         
-        # Database
-        self.db = Database(self.config['database']['path'])
-        
         # Telegram Bot
         self.telegram = TelegramBot(
             bot_token=self.config['telegram']['bot_token'],
             chat_id=self.config['telegram']['chat_id']
         )
         
+        # Cloudflare Tunnel Helper
+        self.cloudflare = CloudflareHelper()
+        
         logger.info("✅ Все модули инициализированы")
+    
+    def _register_bot_commands(self):
+        """Регистрирует обработчики команд Telegram бота"""
+        self.telegram.register_command_handler('stats', self._handle_stats_command)
+        self.telegram.register_command_handler('balance', self._handle_balance_command)
+        self.telegram.register_command_handler('send_tokens', self._handle_send_tokens_command)
+        self.telegram.register_command_handler('ready_tokens', self._handle_ready_tokens_command)
+        self.telegram.register_command_handler('status', self._handle_status_command)
+        self.telegram.register_command_handler('dashboard_url', self._handle_dashboard_url_command)
+        self.telegram.register_command_handler('check_valid', self._handle_check_valid_command)
+        
+        logger.info("✅ Команды Telegram бота зарегистрированы")
+    
+    # ==================== ОБРАБОТЧИКИ КОМАНД ====================
+    
+    def _handle_stats_command(self, chat_id: str = None, message_id: int = None):
+        """Обработчик команды статистики"""
+        try:
+            stats = self.db.get_today_statistics()
+            self.telegram.send_statistics(stats, chat_id=chat_id, message_id=message_id)
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения статистики: {e}")
+            self.telegram.send_error("Statistics", str(e))
+    
+    def _handle_balance_command(self, chat_id: str = None, message_id: int = None):
+        """Обработчик команды баланса"""
+        try:
+            balance = self.lzt_monitor.get_balance()
+            if balance is not None:
+                self.telegram.send_balance_info(
+                    current_balance=balance,
+                    min_balance=self.config['lzt']['min_balance_alert'],
+                    chat_id=chat_id,
+                    message_id=message_id
+                )
+            else:
+                self.telegram.send_error("Balance", "Не удалось получить баланс LZT")
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения баланса: {e}")
+            self.telegram.send_error("Balance", str(e))
+    
+    def _handle_send_tokens_command(self, chat_id: str = None, message_id: int = None):
+        """
+        Обработчик команды отправки токенов
+        
+        ОБНОВЛЕНО: Убрано ограничение на минимальное количество токенов
+        Теперь можно отправить даже 1 токен
+        """
+        try:
+            logger.info("📤 [Command] Начало обработки команды send_tokens")
+            
+            # Получаем все готовые токены
+            ready_tokens = self.db.get_ready_tokens(limit=1000)  # Берем все готовые
+            
+            if not ready_tokens:
+                self.telegram.send_notification(
+                    title="⚠️ Нет готовых токенов",
+                    message="В данный момент нет готовых токенов для отправки.\n\nПроверьте статус системы.",
+                    level="WARNING",
+                    chat_id=chat_id
+                )
+                return
+            
+            logger.info(f"📦 [Command] Найдено готовых токенов: {len(ready_tokens)}")
+            
+            # Проверяем каждый токен на валидность
+            valid_tokens = []
+            invalid_tokens = []
+            
+            self.telegram.send_notification(
+                title="Проверка токенов",
+                message=f"Проверяю {len(ready_tokens)} токенов на валидность...",
+                level="INFO",
+                chat_id=chat_id
+            )
+            
+            for token_data in ready_tokens:
+                token = token_data['token']
+                
+                # Валидируем
+                is_valid, username = self.validator.validate_token(token)
+                
+                if is_valid:
+                    valid_tokens.append(token)
+                    logger.info(f"✅ [Command] Токен валиден: {username}")
+                else:
+                    invalid_tokens.append(token)
+                    logger.warning(f"❌ [Command] Токен невалиден, будет удален")
+                    
+                    # Помечаем как invalid в БД
+                    self.db.update_token_status(
+                        token=token,
+                        status='invalid',
+                        error='Failed validation before send'
+                    )
+                
+                # Небольшая задержка между проверками
+                time.sleep(0.5)
+            
+            logger.info(f"📊 [Command] Результат проверки: {len(valid_tokens)} валидных, {len(invalid_tokens)} невалидных")
+            
+            # ОБНОВЛЕНО: Убрана проверка минимального количества
+            if len(valid_tokens) == 0:
+                self.telegram.send_notification(
+                    title="❌ Нет валидных токенов",
+                    message=f"Все токены ({len(invalid_tokens)}) оказались невалидными.\n\nОни были удалены из базы.",
+                    level="ERROR",
+                    chat_id=chat_id
+                )
+                return
+            
+            logger.info(f"📤 [Command] Отправка {len(valid_tokens)} токенов...")
+            
+            # Отправляем ВСЕ токены одним файлом
+            success = self.telegram.send_tokens_file(valid_tokens, chat_id=chat_id)
+            
+            if success:
+                sent_tokens = valid_tokens
+                # Помечаем отправленные токены как 'sent'
+                for token in sent_tokens:
+                    self.db.update_token_status(
+                        token=token,
+                        status='sent'
+                    )
+                
+                # Обновляем статистику
+                self.db.update_statistics(tokens_sent=len(sent_tokens))
+                
+                # Отправляем уведомление об успехе
+                self.telegram.send_tokens_sent_notification(
+                    count=len(sent_tokens),
+                    invalid_count=len(invalid_tokens),
+                    chat_id=chat_id
+                )
+                
+                # ВАЖНО: Сбрасываем флаг уведомлений после отправки
+                self.ready_tokens_notification_sent = False
+                logger.info("🔄 [Command] Флаг уведомлений сброшен после отправки токенов")
+                
+                logger.info(f"✅ [Command] Токены успешно отправлены: {len(sent_tokens)}")
+            else:
+                self.telegram.send_error("Send Tokens", "Не удалось отправить файл с токенами")
+                
+        except Exception as e:
+            logger.error(f"❌ [Command] Ошибка отправки токенов: {e}")
+            self.telegram.send_error("Send Tokens", str(e))
+    
+    def _handle_check_valid_command(self, chat_id: str = None, message_id: int = None):
+        """
+        ОБНОВЛЕНО: Обработчик команды продвинутой проверки токенов
+        
+        Использует DiscordAdvancedChecker для полного анализа
+        """
+        try:
+            logger.info("🔍 [Command] Начало продвинутой проверки токенов")
+            
+            # Получаем все готовые токены
+            ready_tokens = self.db.get_ready_tokens(limit=1000)
+            
+            if not ready_tokens:
+                self.telegram.send_notification(
+                    title="⚠️ Нет токенов для проверки",
+                    message="В данный момент нет готовых токенов.",
+                    level="WARNING",
+                    chat_id=chat_id,
+                    message_id=message_id
+                )
+                return
+            
+            total = len(ready_tokens)
+            tokens_list = [t['token'] for t in ready_tokens]
+            
+            logger.info(f"🔍 [Command] Проверка {total} токенов...")
+            
+            # Отправляем/редактируем сообщение о начале проверки
+            start_text = (
+                f"🔍 <b>Продвинутая проверка токенов</b>\n\n"
+                f"Начинаю детальный анализ {total} токенов...\n\n"
+                f"⏳ Проверяю:\n"
+                f"• Валидность\n"
+                f"• Проспам (последние сообщения)\n"
+                f"• Флаги и лимиты\n"
+                f"• Биллинг и телефон\n"
+                f"• Гео и tier\n\n"
+                f"Это может занять некоторое время."
+            )
+            
+            if message_id:
+                self.telegram.edit_message(message_id, start_text, chat_id=chat_id)
+            else:
+                result = self.telegram.send_message(start_text, chat_id=chat_id)
+                if result:
+                    message_id = result.get('result', {}).get('message_id')
+            
+            # Импортируем чекер из модулей
+            from modules.advanced_checker import DiscordAdvancedChecker
+            
+            # Создаем чекер с 5 потоками
+            checker = DiscordAdvancedChecker(threads=5)
+            
+            # Переменные для отслеживания прогресса
+            completed = [0]  # Используем список чтобы изменять в callback
+            last_update = [time.time()]
+            
+            def progress_callback(current, total_count):
+                """Callback для обновления прогресса"""
+                completed[0] = current
+                
+                # Обновляем сообщение каждые 2 секунды
+                if message_id and (time.time() - last_update[0] >= 2):
+                    progress_text = (
+                        f"🔍 <b>Продвинутая проверка токенов</b>\n\n"
+                        f"⏳ Проверено: {current}/{total_count}\n"
+                        f"📊 Прогресс: {int(current/total_count*100)}%\n\n"
+                        f"Проверяю валидность, проспам, флаги, биллинг...\n"
+                        f"Пожалуйста, подождите."
+                    )
+                    try:
+                        self.telegram.edit_message(message_id, progress_text, chat_id=chat_id)
+                        last_update[0] = time.time()
+                    except:
+                        pass
+            
+            # Запускаем проверку с callback
+            result = checker.check_tokens(tokens_list, progress_callback=progress_callback)
+            stats = result['statistics']
+            results = result['results']
+            
+            # Обновляем БД - помечаем невалидные как invalid
+            for res in results:
+                if not res['valid']:
+                    self.db.update_token_status(
+                        token=res['token'],
+                        status='invalid',
+                        error='Failed advanced validation check'
+                    )
+            
+            logger.info(f"✅ [Command] Проверка завершена: {stats['valid']} валидных, {stats['invalid']} невалидных")
+            
+            # Формируем детальный отчет
+            report_text = (
+                f"📊 <b>Результаты проверки</b>\n\n"
+                f"📦 Всего: {stats['total']}\n"
+                f"🔀 Дубликаты по строкам: {stats['line_duplicates']}\n"
+                f"🔄 Дубликаты по аккаунтам: {stats['account_duplicates']}\n"
+                f"✅ Валидных: {stats['valid']}\n"
+                f"❌ Невалидных: {stats['invalid']}\n"
+            )
+            
+            # Показываем ошибки доп проверок если есть
+            if stats['check_errors'] > 0:
+                report_text += f"⚠️ Ошибок доп проверок: {stats['check_errors']}\n"
+            
+            report_text += f"🇷🇺 СНГ: {stats['cis']}\n\n"
+            
+            report_text += (
+                f"📁 <b>Проспам:</b>\n"
+                f"• Проспам: {stats['spam']['by_bot']} ✉️\n"
+                f"• Непроспам: {stats['spam']['non_spam_by_bot']} 🏆\n"
+                f"• Пустых: {stats['spam']['empty']} 💨\n\n"
+                
+                f"📁 <b>Флаги:</b>\n"
+                f"• Локнутые: {stats['flags']['locked']} ⛔️\n"
+                f"• Спаммеры: {stats['flags']['spammer']} 🚫\n"
+                f"• Карантин: {stats['flags']['quarantine']} 🦠\n"
+                f"• Лимиты: {stats['flags']['limited']} ⚠️\n\n"
+                
+                f"📁 <b>Аккаунты:</b>\n"
+                f"• Биллинги: {stats['billing']['has_billing']} 💳\n"
+                f"• С телефоном: {stats['billing']['has_phone']} 📱\n"
+                f"• Без телефона: {stats['billing']['no_phone']} 📵\n\n"
+                
+                f"📁 <b>ГЕО непроспам:</b>\n"
+                f"• Тир 1: {stats['geo']['tier1']} 🥇\n"
+                f"• Тир 2: {stats['geo']['tier2']} 🥈\n"
+                f"• Тир 3: {stats['geo']['tier3']} 🥉\n\n"
+                
+                f"📝 Всего чатов: {stats['chats']['total']}\n"
+                f"🚫 Исключённые: {stats['chats']['excluded']}\n"
+                f"🌊 Время: {stats['time']:.2f} с."
+            )
+            
+            # Отправляем/редактируем результат
+            if message_id:
+                self.telegram.edit_message(message_id, report_text, chat_id=chat_id)
+            else:
+                self.telegram.send_message(report_text, chat_id=chat_id)
+            
+        except Exception as e:
+            logger.error(f"❌ [Command] Ошибка продвинутой проверки: {e}")
+            if message_id:
+                self.telegram.edit_message(
+                    message_id,
+                    f"❌ <b>Ошибка проверки</b>\n\n{str(e)}",
+                    chat_id=chat_id
+                )
+            else:
+                self.telegram.send_error("Check Valid", str(e))
+    
+    def _handle_ready_tokens_command(self, chat_id: str = None, message_id: int = None):
+        """Обработчик команды информации о готовых токенах"""
+        try:
+            ready_tokens = self.db.get_ready_tokens(limit=1000)
+            count = len(ready_tokens)
+            min_required = self.config['telegram']['min_tokens']
+            
+            self.telegram.send_ready_tokens_info(count, min_required, chat_id=chat_id, message_id=message_id)
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения информации о токенах: {e}")
+            self.telegram.send_error("Ready Tokens", str(e))
+    
+    def _handle_status_command(self, chat_id: str = None, message_id: int = None):
+        """Обработчик команды статуса системы"""
+        try:
+            status = self.get_status()
+            self.telegram.send_system_status(status, chat_id=chat_id, message_id=message_id)
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения статуса: {e}")
+            self.telegram.send_error("Status", str(e))
+    
+    def _handle_dashboard_url_command(self, chat_id: str = None, message_id: int = None):
+        """Обработчик команды получения Dashboard URL"""
+        try:
+            # Получаем Cloudflare URL
+            tunnel_url = self.cloudflare.get_public_url()
+            
+            # Отправляем URL пользователю
+            self.telegram.send_dashboard_url(tunnel_url=tunnel_url, chat_id=chat_id, message_id=message_id)
+            
+            if tunnel_url:
+                logger.info(f"✅ Dashboard URL отправлен: {tunnel_url}")
+            else:
+                logger.info("⚠️ Cloudflare Tunnel не запущен, отправлен localhost URL")
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения Dashboard URL: {e}")
+            self.telegram.send_error("Dashboard URL", str(e))
+    
+    def reset_token_cleaning(self, token: str) -> bool:
+        """
+        Сбрасывает очистку токена - возвращает его в статус 'validated'
+        
+        Args:
+            token: Discord токен
+            
+        Returns:
+            True если успешно
+        """
+        try:
+            # Получаем информацию о токене
+            token_info = self.db.get_token_info(token)
+            
+            if not token_info:
+                logger.error(f"❌ Токен не найден: {token[:20]}...")
+                return False
+            
+            # Проверяем что токен в статусе cleaning
+            if token_info['status'] != 'cleaning':
+                logger.warning(f"⚠️ Токен не в статусе cleaning: {token_info['status']}")
+                return False
+            
+            # Возвращаем в очередь на очистку
+            logger.info(f"🔄 Сброс очистки токена: {token_info.get('username', 'Unknown')}")
+            
+            # Обновляем статус в БД
+            self.db.update_token_status(
+                token=token,
+                status='validated',
+                cleaning_progress=None
+            )
+            
+            # Добавляем обратно в очередь на очистку
+            purchase_data = {
+                'token': token,
+                'username': token_info.get('username', 'Unknown'),
+                'item_id': token_info.get('lzt_item_id'),
+                'price': token_info.get('price', 0)
+            }
+            
+            self.validated_queue.put(purchase_data)
+            
+            logger.info(f"✅ Токен возвращен в очередь очистки")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка сброса очистки: {e}")
+            return False
     
     # ==================== ЭТАП 1: МОНИТОРИНГ LZT ====================
     
@@ -221,94 +619,56 @@ class TokenPipeline:
                 # Получаем токен из очереди
                 purchase = self.validated_queue.get(timeout=1)
                 
-                logger.info(f"🧹 [Cleaner] Очистка токена: {purchase['username']}")
+                logger.info(f"🧹 [Cleaner] Начало очистки токена {purchase.get('username', 'Unknown')}...")
                 
-                # Обновляем статус
+                # Обновляем статус в БД
                 self.db.update_token_status(
                     token=purchase['token'],
-                    status='cleaning'
+                    status='cleaning',
+                    cleaning_progress='Инициализация...'
                 )
                 
-                # Создаем ProgressTracker который обновляет БД
-                class DatabaseProgressTracker:
+                # Создаем простой прогресс-трекер для БД
+                class DBProgressTracker:
                     def __init__(self, db, token):
                         self.db = db
                         self.token = token
-                        self.max_workers = 1
-                    
-                    def add_token(self, token, username):
-                        pass
                     
                     def update_status(self, token, status, **kwargs):
                         # Обновляем прогресс в БД
                         self.db.update_token_status(
-                            self.token,
-                            'cleaning',
+                            token=self.token,
+                            status='cleaning',
                             cleaning_progress=status
                         )
-                        logger.debug(f"[Cleaner Progress] {status}")
+                    
+                    def add_token(self, token, username):
+                        pass
                     
                     def mark_completed(self, token):
                         pass
                 
-                progress_tracker = DatabaseProgressTracker(self.db, purchase['token'])
+                progress_tracker = DBProgressTracker(self.db, purchase['token'])
                 
-                # Создаем API
-                if proxy_manager:
-                    api = DiscordAPI(proxy_manager, progress_tracker)
-                else:
-                    # API без прокси
-                    from modules.cleaner import RateLimiter
-                    import requests
-                    
-                    class SimpleAPI:
-                        def __init__(self):
-                            self.rate_limiter = RateLimiter()
-                        
-                        def safe_request(self, method, url, headers, max_retries=3):
-                            for attempt in range(max_retries):
-                                self.rate_limiter.wait()
-                                try:
-                                    response = requests.request(method, url, headers=headers, timeout=10)
-                                    self.rate_limiter.update_from_headers(response.headers)
-                                    return response
-                                except:
-                                    if attempt == max_retries - 1:
-                                        return None
-                                    continue
-                            return None
-                    
-                    api = SimpleAPI()
+                # Создаем API клиент
+                api = DiscordAPI(proxy_manager, progress_tracker)
                 
-                # Запускаем очистку через process_token
-                try:
-                    process_token(api, purchase['token'], progress_tracker)
-                    
-                    logger.info(f"✅ [Cleaner] Токен очищен: {purchase['username']}")
-                    
-                    # Обновляем статус
-                    self.db.update_token_status(
-                        token=purchase['token'],
-                        status='cleaned'
-                    )
-                    
-                    # Обновляем статистику
-                    self.db.update_statistics(tokens_cleaned=1)
-                    
-                    # Отправляем на финальную валидацию
-                    self.cleaned_queue.put(purchase)
-                    
-                except Exception as clean_error:
-                    logger.error(f"❌ [Cleaner] Ошибка очистки: {clean_error}")
-                    
-                    # Все равно отправляем на финальную валидацию
-                    # (валидатор проверит работоспособность)
-                    self.db.update_token_status(
-                        token=purchase['token'],
-                        status='cleaned',
-                        error=f'Cleaning error: {str(clean_error)}'
-                    )
-                    self.cleaned_queue.put(purchase)
+                # Запускаем очистку
+                process_token(api, purchase['token'], progress_tracker)
+                
+                logger.info(f"✅ [Cleaner] Очистка завершена для {purchase.get('username', 'Unknown')}")
+                
+                # Обновляем статус в БД
+                self.db.update_token_status(
+                    token=purchase['token'],
+                    status='cleaned'
+                )
+                
+                # Обновляем статистику
+                self.db.update_statistics(tokens_cleaned=1)
+                
+                # Отправляем на финальную проверку
+                self.cleaned_queue.put(purchase)
                 
                 self.validated_queue.task_done()
                 
@@ -321,16 +681,16 @@ class TokenPipeline:
     
     def _final_validation_worker(self):
         """Поток финальной валидации после очистки"""
-        logger.info("✅ [Validator #2] Запуск финальной валидации...")
+        logger.info("🔍 [Validator #2] Запуск финальной валидации...")
         
         while self.running:
             try:
                 # Получаем токен из очереди
                 purchase = self.cleaned_queue.get(timeout=1)
                 
-                logger.info(f"🔍 [Validator #2] Финальная проверка {purchase.get('username', 'Unknown')}...")
+                logger.info(f"🔍 [Validator #2] Финальная проверка токена {purchase.get('username', 'Unknown')}...")
                 
-                # Валидируем токен еще раз с обработкой исключений
+                # Валидируем токен с обработкой исключений
                 try:
                     is_valid, username = self.validator.validate_token(purchase['token'])
                 except Exception as e:
@@ -342,17 +702,54 @@ class TokenPipeline:
                     continue
                 
                 if is_valid:
-                    logger.info(f"✅ [Validator #2] Токен готов: {username}")
+                    logger.info(f"✅ [Validator #2] Токен прошел финальную проверку: {username}")
                     
-                    # Обновляем в БД
+                    # Обновляем в БД - статус READY (готов к отправке)
                     self.db.update_token_status(
                         token=purchase['token'],
                         status='ready',
                         username=username
                     )
                     
-                    # Отправляем в очередь готовых
-                    self.ready_queue.put(purchase)
+                    logger.info(f"📦 [Validator #2] Токен готов к отправке")
+                    
+                    # Проверяем количество готовых токенов
+                    ready_tokens = self.db.get_ready_tokens(limit=1000)
+                    ready_count = len(ready_tokens)
+                    
+                    logger.debug(f"📊 [Validator #2] Всего готовых токенов: {ready_count}")
+                    
+                    # Параметры из конфига
+                    notification_threshold = self.config['telegram'].get('notification_threshold', 40)
+                    
+                    # Если достигли порога И еще не отправляли уведомление
+                    if ready_count >= notification_threshold and not self.ready_tokens_notification_sent:
+                        logger.info(f"🔔 [Validator #2] Достигнут порог {notification_threshold} токенов! Отправка уведомления...")
+                        
+                        try:
+                            # Отправляем уведомление
+                            self.telegram.send_notification(
+                                title="🎉 Готовые токены накоплены!",
+                                message=(
+                                    f"Накоплено <b>{ready_count}</b> готовых токенов!\n\n"
+                                    f"Вы можете отправить их, нажав кнопку "
+                                    f"<b>'📦 Отправить токены'</b> в главном меню."
+                                ),
+                                level="SUCCESS"
+                            )
+                            
+                            # Устанавливаем флаг
+                            self.ready_tokens_notification_sent = True
+                            
+                            logger.info(f"✅ [Validator #2] Уведомление отправлено в Telegram")
+                        except Exception as e:
+                            logger.error(f"❌ [Validator #2] Ошибка отправки уведомления: {e}")
+                    
+                    # Сбрасываем флаг если токенов стало меньше порога (значит пользователь отправил)
+                    elif ready_count < notification_threshold:
+                        if self.ready_tokens_notification_sent:
+                            logger.info(f"🔄 [Validator #2] Количество токенов упало ниже порога ({ready_count} < {notification_threshold}), сброс флага уведомлений")
+                        self.ready_tokens_notification_sent = False
                     
                 else:
                     logger.warning(f"❌ [Validator #2] Токен стал невалидным после очистки")
@@ -370,54 +767,6 @@ class TokenPipeline:
                 # Queue пустая - ждем
                 time.sleep(1)
                 continue
-    
-    # ==================== ЭТАП 5: ОТПРАВКА В TELEGRAM ====================
-    
-    def _telegram_sender_worker(self):
-        """Поток отправки токенов в Telegram"""
-        logger.info("📤 [Telegram] Запуск отправки...")
-        
-        while self.running:
-            try:
-                # Проверяем сколько готовых токенов в БД
-                ready_tokens = self.db.get_ready_tokens(
-                    limit=self.config['telegram']['max_tokens']
-                )
-                
-                # Проверяем достаточно ли токенов для отправки
-                if len(ready_tokens) >= self.config['telegram']['min_tokens']:
-                    logger.info(f"📦 [Telegram] Отправка пакета из {len(ready_tokens)} токенов...")
-                    
-                    # Отправляем пакет
-                    success = self.telegram.send_tokens_batch(
-                        tokens_data=ready_tokens,
-                        min_tokens=self.config['telegram']['min_tokens'],
-                        max_tokens=self.config['telegram']['max_tokens']
-                    )
-                    
-                    if success:
-                        # Помечаем токены как отправленные
-                        for token_data in ready_tokens[:self.config['telegram']['max_tokens']]:
-                            self.db.update_token_status(
-                                token=token_data['token'],
-                                status='sent'
-                            )
-                        
-                        # Обновляем статистику
-                        sent_count = min(len(ready_tokens), self.config['telegram']['max_tokens'])
-                        self.db.update_statistics(tokens_sent=sent_count)
-                        
-                        logger.info(f"✅ [Telegram] Пакет отправлен: {sent_count} токенов")
-                else:
-                    logger.debug(f"⏳ [Telegram] Ожидание токенов: {len(ready_tokens)}/{self.config['telegram']['min_tokens']}")
-                
-                # Проверяем каждые 60 секунд
-                time.sleep(60)
-                
-            except Exception as e:
-                logger.error(f"❌ [Telegram] Ошибка: {e}")
-                self.telegram.send_error("Telegram Sender", str(e))
-                time.sleep(60)
     
     # ==================== СТАТИСТИКА ====================
     
@@ -453,12 +802,34 @@ class TokenPipeline:
         
         logger.info("🚀 Запуск Pipeline...")
         
+        # Получаем Cloudflare URL для Mini App
+        tunnel_url = self.cloudflare.get_public_url()
+        miniapp_url = f"{tunnel_url}/miniapp" if tunnel_url else None
+        
+        if miniapp_url:
+            logger.info(f"🚀 Mini App доступен: {miniapp_url}")
+        else:
+            logger.info("⚠️ Cloudflare Tunnel не запущен, Mini App будет недоступен")
+        
+        # Отправляем главное меню в Telegram
+        self.telegram.send_main_menu(miniapp_url=miniapp_url)
+        
         # Отправляем уведомление
+        notification_text = "Автоматическая обработка токенов начата.\n\nИспользуйте кнопки для управления системой."
+        
+        if miniapp_url:
+            notification_text += "\n\n🚀 Mini App доступен - нажмите кнопку 'Открыть Dashboard' для быстрого доступа!"
+        else:
+            notification_text += "\n\n💡 Запустите Cloudflare Tunnel для удаленного доступа к Dashboard"
+        
         self.telegram.send_notification(
             title="Pipeline запущен",
-            message="Автоматическая обработка токенов начата",
+            message=notification_text,
             level="SUCCESS"
         )
+        
+        # Запускаем Telegram polling
+        self.telegram.start_polling()
         
         # Создаем и запускаем потоки
         # 1 поток для LZT Monitor
@@ -491,12 +862,6 @@ class TokenPipeline:
             self.threads.append(thread)
         logger.info(f"▶️ Потоков запущено: Validator #2 x{final_validator_threads}")
         
-        # 1 поток для Telegram Sender
-        thread = threading.Thread(target=self._telegram_sender_worker, name="Telegram Sender", daemon=True)
-        thread.start()
-        self.threads.append(thread)
-        logger.info(f"▶️ Поток запущен: Telegram Sender")
-        
         # 1 поток для Statistics
         thread = threading.Thread(target=self._statistics_worker, name="Statistics", daemon=True)
         thread.start()
@@ -514,6 +879,9 @@ class TokenPipeline:
         logger.info("⏹️ Остановка Pipeline...")
         
         self.running = False
+        
+        # Останавливаем Telegram polling
+        self.telegram.stop_polling()
         
         # Ждем завершения потоков
         for thread in self.threads:
@@ -544,54 +912,6 @@ class TokenPipeline:
             'threads': {
                 thread.name: thread.is_alive()
                 for thread in self.threads
-            }
+            },
+            'counts': self.db.count_tokens_by_status()
         }
-
-
-# Пример использования
-if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-    
-    # Конфигурация
-    config = {
-        'lzt': {
-            'api_token': 'your_lzt_token',
-            'check_interval': 60,
-            'min_balance_alert': 100
-        },
-        'validator': {
-            'timeout': 10,
-            'max_retries': 3
-        },
-        'database': {
-            'path': 'data/tokens.db'
-        },
-        'telegram': {
-            'bot_token': 'your_bot_token',
-            'chat_id': 'your_chat_id',
-            'min_tokens': 30,
-            'max_tokens': 50
-        },
-        'proxy': {
-            'enabled': False
-        }
-    }
-    
-    # Создаем pipeline
-    pipeline = TokenPipeline(config)
-    
-    # Запускаем
-    pipeline.start()
-    
-    try:
-        # Держим программу запущенной
-        while True:
-            time.sleep(10)
-            status = pipeline.get_status()
-            print(f"\nСтатус очередей: {status['queues']}")
-    except KeyboardInterrupt:
-        print("\n⏹️ Остановка...")
-        pipeline.stop()
