@@ -118,7 +118,8 @@ class TelegramBot:
             ],
             [
                 {"text": "✅ Проверить валид", "callback_data": "check_valid"},
-            ],
+            {"text": "🔍 Запустить чекер", "callback_data": "run_checker"},
+        ],
             [
                 {"text": "📋 Готовые токены", "callback_data": "ready_tokens"},
                 {"text": "🔄 Статус системы", "callback_data": "status"}
