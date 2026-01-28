@@ -12,7 +12,7 @@ class CloudflareHelper:
     """Класс для работы с Cloudflare Tunnel API"""
     
     # Возможные порты для Cloudflare metrics
-    METRICS_PORTS = [20242,43867, 60000, 60123]
+    METRICS_PORTS = [20241,20242,43867, 60000, 60123]
     
     def __init__(self):
         """Инициализация"""
