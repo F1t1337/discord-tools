@@ -24,8 +24,10 @@ class Database:
     @contextmanager
     def get_connection(self):
         """Контекстный менеджер для подключения к БД"""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row  # Возвращать результаты как словари
+        conn = sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")  # Write-Ahead Logging
+        conn.execute("PRAGMA busy_timeout=30000")  # 30 секунд timeout
         try:
             yield conn
             conn.commit()
