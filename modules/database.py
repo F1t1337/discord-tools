@@ -78,12 +78,11 @@ class Database:
             # Таблица статистики продавцов
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS seller_statistics (
-                    seller_id INTEGER PRIMARY KEY,
-                    seller_username TEXT,
+                    seller_username TEXT PRIMARY KEY,
                     total_bought INTEGER DEFAULT 0,
-                    total_valid INTEGER DEFAULT 0,
                     total_invalid INTEGER DEFAULT 0,
                     total_spent REAL DEFAULT 0,
+                    avg_price REAL DEFAULT 0,
                     valid_percent REAL DEFAULT 0,
                     last_purchase_at REAL,
                     created_at REAL NOT NULL
@@ -129,15 +128,15 @@ class Database:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
-                    INSERT INTO tokens (token, lzt_item_id, seller_id, price, status, created_at)
-                    VALUES (?, ?, ?, ?, 'new', ?)
-                """, (token, lzt_item_id, seller_id, price, datetime.now().timestamp()))
+                    INSERT INTO tokens (token, lzt_item_id, seller_id, seller_username, price, status, created_at)
+                    VALUES (?, ?, ?, ?, ?, 'new', ?)
+                """, (token, lzt_item_id, None, seller_username, price, datetime.now().timestamp()))
                 
                 token_id = cursor.lastrowid
                 
                 # Обновляем статистику продавца
-                if seller_id:
-                    self._update_seller_stats_purchase(seller_id, seller_username, price)
+                if seller_username:
+                    self._update_seller_stats_purchase(seller_username, price)
                 
                 logger.info(f"➕ Токен добавлен в БД: ID={token_id}, Seller={seller_id}")
                 return token_id
@@ -444,14 +443,14 @@ class Database:
     
     # ==================== СТАТИСТИКА ПРОДАВЦОВ ====================
     
-    def _update_seller_stats_purchase(self, seller_id: int, seller_username: str = None, price: float = None):
+    def _update_seller_stats_purchase(self, seller_username: str, price: float = None):
         """Обновляет статистику продавца при покупке"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 
                 # Проверяем существует ли продавец
-                cursor.execute("SELECT seller_id FROM seller_statistics WHERE seller_id = ?", (seller_id,))
+                cursor.execute("SELECT seller_username FROM seller_statistics WHERE seller_username = ?", (seller_username,))
                 exists = cursor.fetchone()
                 
                 if exists:
@@ -460,60 +459,56 @@ class Database:
                         UPDATE seller_statistics
                         SET total_bought = total_bought + 1,
                             total_spent = total_spent + ?,
-                            last_purchase_at = ?,
-                            seller_username = COALESCE(?, seller_username)
-                        WHERE seller_id = ?
-                    """, (price or 0, datetime.now().timestamp(), seller_username, seller_id))
+                            avg_price = (total_spent + ?) / (total_bought + 1),
+                            last_purchase_at = ?
+                        WHERE seller_username = ?
+                    """, (price or 0, price or 0, datetime.now().timestamp(), seller_username))
                 else:
                     # Создаем новую запись
                     cursor.execute("""
                         INSERT INTO seller_statistics 
-                        (seller_id, seller_username, total_bought, total_spent, last_purchase_at, created_at)
-                        VALUES (?, ?, 1, ?, ?, ?)
-                    """, (seller_id, seller_username, price or 0, datetime.now().timestamp(), datetime.now().timestamp()))
+                        (seller_username, total_bought, total_spent, avg_price, last_purchase_at, created_at)
+                        VALUES (?, 1, ?, ?, ?, ?)
+                    """, (seller_username, price or 0, price or 0, datetime.now().timestamp(), datetime.now().timestamp()))
                 
         except Exception as e:
             logger.error(f"❌ Ошибка обновления статистики продавца: {e}")
     
-    def update_seller_stats_validation(self, seller_id: int, is_valid: bool):
-        """Обновляет статистику продавца после валидации"""
+    def update_seller_stats_validation(self, seller_username: str, is_valid: bool):
+        """Обновляет статистику продавца после валидации (когда токен становится invalid)"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 
-                if is_valid:
-                    cursor.execute("""
-                        UPDATE seller_statistics
-                        SET total_valid = total_valid + 1
-                        WHERE seller_id = ?
-                    """, (seller_id,))
-                else:
+                # Увеличиваем счетчик невалидных только если токен стал invalid
+                if not is_valid:
                     cursor.execute("""
                         UPDATE seller_statistics
                         SET total_invalid = total_invalid + 1
-                        WHERE seller_id = ?
-                    """, (seller_id,))
+                        WHERE seller_username = ?
+                    """, (seller_username,))
                 
                 # Пересчитываем процент валидности
+                # valid = total_bought - total_invalid
                 cursor.execute("""
                     UPDATE seller_statistics
                     SET valid_percent = CASE 
-                        WHEN (total_valid + total_invalid) > 0 
-                        THEN (total_valid * 100.0) / (total_valid + total_invalid)
+                        WHEN total_bought > 0 
+                        THEN ((total_bought - total_invalid) * 100.0) / total_bought
                         ELSE 0
                     END
-                    WHERE seller_id = ?
-                """, (seller_id,))
+                    WHERE seller_username = ?
+                """, (seller_username,))
                 
         except Exception as e:
             logger.error(f"❌ Ошибка обновления валидации продавца: {e}")
     
-    def get_seller_statistics(self, limit: int = 20) -> List[Dict]:
+    def get_seller_statistics(self, limit: int = None) -> List[Dict]:
         """
         Получает статистику по продавцам
         
         Args:
-            limit: Максимальное количество продавцов
+            limit: Максимальное количество продавцов (None = все)
             
         Returns:
             Список словарей со статистикой продавцов
@@ -521,21 +516,36 @@ class Database:
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT 
-                        seller_id,
-                        seller_username,
-                        total_bought,
-                        total_valid,
-                        total_invalid,
-                        total_spent,
-                        valid_percent,
-                        last_purchase_at
-                    FROM seller_statistics
-                    WHERE total_bought > 0
-                    ORDER BY total_bought DESC
-                    LIMIT ?
-                """, (limit,))
+                
+                if limit:
+                    cursor.execute("""
+                        SELECT 
+                            seller_username,
+                            total_bought,
+                            total_invalid,
+                            total_spent,
+                            avg_price,
+                            valid_percent,
+                            last_purchase_at
+                        FROM seller_statistics
+                        WHERE total_bought > 0
+                        ORDER BY total_bought DESC
+                        LIMIT ?
+                    """, (limit,))
+                else:
+                    cursor.execute("""
+                        SELECT 
+                            seller_username,
+                            total_bought,
+                            total_invalid,
+                            total_spent,
+                            avg_price,
+                            valid_percent,
+                            last_purchase_at
+                        FROM seller_statistics
+                        WHERE total_bought > 0
+                        ORDER BY total_bought DESC
+                    """)
                 
                 rows = cursor.fetchall()
                 return [dict(row) for row in rows]
@@ -544,7 +554,7 @@ class Database:
             logger.error(f"❌ Ошибка получения статистики продавцов: {e}")
             return []
     
-    def get_seller_by_id(self, seller_id: int) -> Optional[Dict]:
+    def get_seller_by_username(self, seller_username: str) -> Optional[Dict]:
         """Получает статистику конкретного продавца"""
         try:
             with self.get_connection() as conn:
@@ -552,8 +562,8 @@ class Database:
                 cursor.execute("""
                     SELECT *
                     FROM seller_statistics
-                    WHERE seller_id = ?
-                """, (seller_id,))
+                    WHERE seller_username = ?
+                """, (seller_username,))
                 
                 row = cursor.fetchone()
                 return dict(row) if row else None

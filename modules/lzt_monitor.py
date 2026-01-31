@@ -195,12 +195,17 @@ class LZTMonitor:
                         self.processed_items.add(item_id)
                         continue
                 
+                # Получаем информацию о продавце
+                seller_data = purchase.get('seller', {})
+                seller_username = seller_data.get('username', 'Unknown')
+                
                 purchase_info = {
                     'item_id': item_id,
                     'token': token,
                     'price': purchase.get('price', 0),
                     'username': purchase.get('title', 'Unknown'),  # Берем title из purchase
-                    'purchase_date': purchase.get('purchase_date')
+                    'purchase_date': purchase.get('purchase_date'),
+                    'seller_username': seller_username  # НОВОЕ: username продавца
                 }
                 
                 new_purchases.append(purchase_info)

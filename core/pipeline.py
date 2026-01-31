@@ -111,6 +111,15 @@ class TokenPipeline:
         except Exception as e:
             logger.error(f"❌ Ошибка получения статистики: {e}")
             self.telegram.send_error("Statistics", str(e))
+    def _handle_sellers_stats_command(self, chat_id: str = None, message_id: int = None):
+        """Обработчик команды статистики продавцов"""
+        try:
+            sellers = self.db.get_seller_statistics(limit=None)  # Получаем всех продавцов
+            self.telegram.send_sellers_statistics(sellers, chat_id=chat_id, message_id=message_id)
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения статистики продавцов: {e}")
+            self.telegram.send_error("Sellers Statistics", str(e))
+
     
     def _handle_balance_command(self, chat_id: str = None, message_id: int = None):
         """Обработчик команды баланса"""
@@ -287,6 +296,11 @@ class TokenPipeline:
                         status='invalid',
                         error='Failed validation check'
                     )
+                    
+                    # Обновляем статистику продавца
+                    token_info = self.db.get_token_info(token)
+                    if token_info and token_info.get('seller_username'):
+                        self.db.update_seller_stats_validation(token_info['seller_username'], is_valid=False)
                 
                 if message_id and i % 5 == 0:
                     progress_text = (

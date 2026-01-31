@@ -1,11 +1,11 @@
 
 import requests
 
-url = "https://prod-api.lzt.market/user/2615426/orders?category_id=22&order_by=pdate_to_down"
+url = "https://prod-api.lzt.market/213896003/"
 
 headers = {
     "accept": "application/json",
-    "authorization": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzUxMiJ9.eyJzdWIiOjI2MTU0MjYsImlzcyI6Imx6dCIsImlhdCI6MTc2OTEyMjQzNSwianRpIjoiOTE3OTUwIiwic2NvcGUiOiJiYXNpYyByZWFkIHBvc3QgY29udmVyc2F0ZSBwYXltZW50IGludm9pY2UgY2hhdGJveCBtYXJrZXQiLCJleHAiOjE5MjY4MDI0MzV9.AFeSm1asGqoNbXtKUsMauLX5NljumPAcxjayGALPH3qinUWknODFSsvY5wUVpPku5-pZnuMWtYeXypy40RASSDZ4HrstgeWDmx8DFH11cDHUzPiOgl7r1YgrLSnwGreMA540GJQlC6fU2RolXGDwRp_uNuIZibh9RRzAYQlum3k"
+    "authorization": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzUxMiJ9.eyJzdWIiOjI2MTU0MjYsImlzcyI6Imx6dCIsImlhdCI6MTc2OTE5ODQ5NSwianRpIjoiOTE4MzM5Iiwic2NvcGUiOiJiYXNpYyByZWFkIHBvc3QgY29udmVyc2F0ZSBwYXltZW50IGludm9pY2UgY2hhdGJveCBtYXJrZXQiLCJleHAiOjE5MjY4Nzg0OTV9.h-4coumbxAbNnGdRzQhPmb8UOYxxICVm_kB-vrZlXhq_uEl44dPkH9gQi1KldJq5s2u-mez7sAStCcJHzws06Onxw2iSdtieU3KSuCyixLcryt3MXwxXTsBb45lLSrzOG5kJno_25jo4yMbPzB3SzAUIK0r05IDKVN3zjKeFijc"
 }
 
 response = requests.get(url, headers=headers)

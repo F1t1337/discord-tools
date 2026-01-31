@@ -214,6 +214,35 @@ class TelegramBot:
         text = f"{emoji} <b>{title}</b>\n\n{message}"
         result = self.send_message(text, chat_id=chat_id)
         return result is not None
+    def send_sellers_statistics(self, sellers: List[Dict], chat_id: str = None, message_id: int = None) -> bool:
+        """Отправляет статистику по продавцам"""
+        if not sellers:
+            text = "📊 <b>Статистика продавцов</b>\n\n⚠️ Нет данных о продавцах"
+        else:
+            text = "👥 <b>Статистика продавцов</b>\n\n"
+            
+            for i, seller in enumerate(sellers, 1):
+                username = seller.get('seller_username', 'Unknown')
+                total_bought = seller.get('total_bought', 0)
+                total_invalid = seller.get('total_invalid', 0)
+                total_valid = total_bought - total_invalid
+                avg_price = seller.get('avg_price', 0)
+                valid_percent = seller.get('valid_percent', 0)
+                
+                text += (
+                    f"{i}. 👤 <b>{username}</b>\n"
+                    f"   📦 Куплено: {total_bought} | ✅ {total_valid} | ❌ {total_invalid} | "
+                    f"💯 {valid_percent:.1f}% | 💰 {avg_price:.1f} ₽\n\n"
+                )
+        
+        keyboard = {"inline_keyboard": [[{"text": "« Назад", "callback_data": "menu"}]]}
+        
+        if message_id:
+            return self.edit_message(message_id, text, reply_markup=keyboard, chat_id=chat_id)
+        else:
+            result = self.send_message(text, reply_markup=keyboard, chat_id=chat_id)
+            return result is not None
+
     
     def send_statistics(self, stats: Dict, chat_id: str = None, message_id: int = None) -> bool:
         """Отправляет или редактирует статистику"""
