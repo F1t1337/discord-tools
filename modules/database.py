@@ -458,6 +458,11 @@ class Database:
                     SET total_bought = total_bought + 1,
                         total_spent = total_spent + ?,
                         avg_price = (total_spent + ?) / (total_bought + 1),
+                        valid_percent = CASE 
+                            WHEN (total_bought + 1) > 0 
+                            THEN ((total_bought + 1 - total_invalid) * 100.0) / (total_bought + 1)
+                            ELSE 0
+                        END,
                         last_purchase_at = ?
                     WHERE seller_username = ?
                 """, (price or 0, price or 0, datetime.now().timestamp(), seller_username))
@@ -465,8 +470,8 @@ class Database:
                 # Создаем новую запись
                 cursor.execute("""
                     INSERT INTO seller_statistics 
-                    (seller_username, total_bought, total_spent, avg_price, last_purchase_at, created_at)
-                    VALUES (?, 1, ?, ?, ?, ?)
+                    (seller_username, total_bought, total_spent, avg_price, valid_percent, last_purchase_at, created_at)
+                    VALUES (?, 1, ?, ?, 100.0, ?, ?)
                 """, (seller_username, price or 0, price or 0, datetime.now().timestamp(), datetime.now().timestamp()))
             
         except Exception as e:
