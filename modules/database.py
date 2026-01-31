@@ -137,7 +137,7 @@ class Database:
                 
                 # Обновляем статистику продавца
                 if seller_username:
-                    self._update_seller_stats_purchase(seller_username, price)
+                    self._update_seller_stats_purchase(cursor, seller_username, price)
                 
                 logger.info(f"➕ Токен добавлен в БД: ID={token_id}, Seller={seller_username}")
                 return token_id
@@ -444,34 +444,31 @@ class Database:
     
     # ==================== СТАТИСТИКА ПРОДАВЦОВ ====================
     
-    def _update_seller_stats_purchase(self, seller_username: str, price: float = None):
-        """Обновляет статистику продавца при покупке"""
+    def _update_seller_stats_purchase(self, cursor, seller_username: str, price: float = None):
+        """Обновляет статистику продавца при покупке (использует существующий cursor)"""
         try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                
-                # Проверяем существует ли продавец
-                cursor.execute("SELECT seller_username FROM seller_statistics WHERE seller_username = ?", (seller_username,))
-                exists = cursor.fetchone()
-                
-                if exists:
-                    # Обновляем существующую запись
-                    cursor.execute("""
-                        UPDATE seller_statistics
-                        SET total_bought = total_bought + 1,
-                            total_spent = total_spent + ?,
-                            avg_price = (total_spent + ?) / (total_bought + 1),
-                            last_purchase_at = ?
-                        WHERE seller_username = ?
-                    """, (price or 0, price or 0, datetime.now().timestamp(), seller_username))
-                else:
-                    # Создаем новую запись
-                    cursor.execute("""
-                        INSERT INTO seller_statistics 
-                        (seller_username, total_bought, total_spent, avg_price, last_purchase_at, created_at)
-                        VALUES (?, 1, ?, ?, ?, ?)
-                    """, (seller_username, price or 0, price or 0, datetime.now().timestamp(), datetime.now().timestamp()))
-                
+            # Проверяем существует ли продавец
+            cursor.execute("SELECT seller_username FROM seller_statistics WHERE seller_username = ?", (seller_username,))
+            exists = cursor.fetchone()
+            
+            if exists:
+                # Обновляем существующую запись
+                cursor.execute("""
+                    UPDATE seller_statistics
+                    SET total_bought = total_bought + 1,
+                        total_spent = total_spent + ?,
+                        avg_price = (total_spent + ?) / (total_bought + 1),
+                        last_purchase_at = ?
+                    WHERE seller_username = ?
+                """, (price or 0, price or 0, datetime.now().timestamp(), seller_username))
+            else:
+                # Создаем новую запись
+                cursor.execute("""
+                    INSERT INTO seller_statistics 
+                    (seller_username, total_bought, total_spent, avg_price, last_purchase_at, created_at)
+                    VALUES (?, 1, ?, ?, ?, ?)
+                """, (seller_username, price or 0, price or 0, datetime.now().timestamp(), datetime.now().timestamp()))
+            
         except Exception as e:
             logger.error(f"❌ Ошибка обновления статистики продавца: {e}")
     
