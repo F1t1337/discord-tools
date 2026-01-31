@@ -170,7 +170,7 @@ def migrate_database():
         
         print(f"\n✅ Миграция успешно завершена!")
         print(f"💾 Бэкап сохранен: {backup_path}")
-        
+        input("\nНажмите Enter чтобы продолжить...")
     except Exception as e:
         print(f"\n❌ Ошибка миграции: {e}")
         conn.rollback()
@@ -178,6 +178,7 @@ def migrate_database():
         traceback.print_exc()
     finally:
         conn.close()
+    
 
 if __name__ == "__main__":
     print("="*60)
@@ -186,3 +187,4 @@ if __name__ == "__main__":
     print()
     
     migrate_database()
+    input("\nНажмите Enter чтобы выйти...")
