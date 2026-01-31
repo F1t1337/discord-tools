@@ -134,6 +134,19 @@ def migrate_database():
         
         print(f"✅ Обновлена статистика для {len(sellers_data)} продавцов")
         
+
+        # 5. Добавляем поле seller_username в таблицу tokens если его нет
+        print("🔧 Проверка поля seller_username в таблице tokens...")
+        cursor.execute("PRAGMA table_info(tokens)")
+        columns = [row[1] for row in cursor.fetchall()]
+        
+        if 'seller_username' not in columns:
+            print("📝 Добавление поля seller_username в таблицу tokens...")
+            cursor.execute("ALTER TABLE tokens ADD COLUMN seller_username TEXT")
+            print("✅ Поле seller_username добавлено")
+        else:
+            print("✅ Поле seller_username уже существует")
+
         conn.commit()
         
         # Показываем результат
