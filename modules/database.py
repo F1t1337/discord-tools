@@ -48,7 +48,7 @@ class Database:
                     token TEXT NOT NULL UNIQUE,
                     username TEXT,
                     lzt_item_id INTEGER,
-                    seller_id INTEGER,
+                    seller_username TEXT,
                     price REAL,
                     status TEXT NOT NULL DEFAULT 'new',
                     created_at REAL NOT NULL,
@@ -109,7 +109,7 @@ class Database:
     
     # ==================== РАБОТА С ТОКЕНАМИ ====================
     
-    def add_token(self, token: str, lzt_item_id: int = None, seller_id: int = None, 
+    def add_token(self, token: str, lzt_item_id: int = None, 
                   seller_username: str = None, price: float = None) -> Optional[int]:
         """
         Добавляет новый токен в базу
@@ -117,7 +117,6 @@ class Database:
         Args:
             token: Discord токен
             lzt_item_id: ID товара с LZT
-            seller_id: ID продавца
             seller_username: Username продавца
             price: Цена покупки
             
@@ -128,9 +127,9 @@ class Database:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
-                    INSERT INTO tokens (token, lzt_item_id, seller_id, seller_username, price, status, created_at)
-                    VALUES (?, ?, ?, ?, ?, 'new', ?)
-                """, (token, lzt_item_id, None, seller_username, price, datetime.now().timestamp()))
+                    INSERT INTO tokens (token, lzt_item_id, seller_username, price, status, created_at)
+                    VALUES (?, ?, ?, ?, 'new', ?)
+                """, (token, lzt_item_id, seller_username, price, datetime.now().timestamp()))
                 
                 token_id = cursor.lastrowid
                 
@@ -138,7 +137,7 @@ class Database:
                 if seller_username:
                     self._update_seller_stats_purchase(seller_username, price)
                 
-                logger.info(f"➕ Токен добавлен в БД: ID={token_id}, Seller={seller_id}")
+                logger.info(f"➕ Токен добавлен в БД: ID={token_id}, Seller={seller_username}")
                 return token_id
                 
         except sqlite3.IntegrityError:

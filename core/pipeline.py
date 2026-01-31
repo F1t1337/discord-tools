@@ -98,6 +98,7 @@ class TokenPipeline:
         self.telegram.register_command_handler('dashboard_url', self._handle_dashboard_url_command)
         self.telegram.register_command_handler('check_valid', self._handle_check_valid_command)
         self.telegram.register_command_handler('run_checker', self._handle_run_checker_command)
+        self.telegram.register_command_handler('sellers_stats', self._handle_sellers_stats_command)
         
         logger.info("✅ Команды Telegram бота зарегистрированы")
     
@@ -572,6 +573,7 @@ class TokenPipeline:
                     token_id = self.db.add_token(
                         token=purchase['token'],
                         lzt_item_id=purchase['item_id'],
+                        seller_username=purchase.get('seller_username', 'Unknown'),
                         price=purchase['price']
                     )
                     
