@@ -23,11 +23,16 @@ class TelegramBot:
         self.bot_token = bot_token
         self.chat_id = str(chat_id)
         self.base_url = f"https://api.telegram.org/bot{bot_token}"
+        self.file_base_url = f"https://api.telegram.org/file/bot{bot_token}"
         self.last_update_id = 0
         self.command_handlers = {}
         self.is_polling = False
         self.polling_thread = None
         self.last_menu_message_id = None  # Хранить ID последнего меню
+        # Чаты, ожидающие ввод токенов (callback "upload_tokens")
+        self.pending_uploads = set()
+        # Обработчик загруженных токенов: fn(chat_id: str, raw_text: str)
+        self.token_upload_handler: Optional[Callable] = None
         
     def _send_request(self, method: str, data: dict = None, files: dict = None) -> Optional[Dict]:
         """Отправляет запрос к Telegram API"""
@@ -115,6 +120,7 @@ class TelegramBot:
             ],
             [
                 {"text": "📦 Отправить токены", "callback_data": "send_tokens"},
+                {"text": "📥 Загрузить токены", "callback_data": "upload_tokens"},
             ],
             [
                 {"text": "✅ Проверить валид", "callback_data": "check_valid"},
@@ -489,6 +495,79 @@ class TelegramBot:
         """Регистрирует обработчик команды"""
         self.command_handlers[command] = handler
         logger.info(f"✅ Зарегистрирован обработчик для команды: {command}")
+
+    def register_token_upload_handler(self, handler: Callable):
+        """
+        Регистрирует обработчик ручной загрузки токенов.
+
+        Args:
+            handler: функция (chat_id: str, raw_text: str) -> (added, duplicates, errors, total)
+        """
+        self.token_upload_handler = handler
+        logger.info("✅ Зарегистрирован обработчик ручной загрузки токенов")
+
+    def send_upload_prompt(self, chat_id: str = None, message_id: int = None) -> bool:
+        """
+        Переводит чат в режим ожидания токенов.
+        Пользователь может прислать .txt файл или сообщение со списком токенов.
+        """
+        target_chat = str(chat_id or self.chat_id)
+        self.pending_uploads.add(target_chat)
+
+        keyboard = {"inline_keyboard": [[{"text": "◀️ Отмена", "callback_data": "upload_cancel"}]]}
+
+        text = (
+            "📥 <b>Загрузка токенов</b>\n\n"
+            "Пришлите:\n"
+            "• <b>.txt файл</b> со списком токенов, либо\n"
+            "• <b>сообщение</b> с токенами (каждый с новой строки)\n\n"
+            "Поддерживается формат <code>login:pass:token</code> — "
+            "будет взят последний сегмент.\n\n"
+            "Для отмены — команда /cancel или кнопка ниже."
+        )
+
+        if message_id:
+            return self.edit_message(message_id, text, reply_markup=keyboard, chat_id=target_chat)
+        result = self.send_message(text, reply_markup=keyboard, chat_id=target_chat)
+        return result is not None
+
+    def cancel_upload(self, chat_id: str) -> bool:
+        """Отменяет режим ожидания токенов для чата"""
+        target_chat = str(chat_id)
+        was_pending = target_chat in self.pending_uploads
+        self.pending_uploads.discard(target_chat)
+        return was_pending
+
+    def download_file(self, file_id: str) -> Optional[bytes]:
+        """Скачивает файл с серверов Telegram по file_id"""
+        try:
+            info = self._send_request("getFile", data={"file_id": file_id})
+            if not info or not info.get('ok'):
+                return None
+            file_path = info['result'].get('file_path')
+            if not file_path:
+                return None
+            response = requests.get(f"{self.file_base_url}/{file_path}", timeout=30)
+            if response.status_code == 200:
+                return response.content
+            logger.error(f"❌ Не удалось скачать файл: {response.status_code}")
+            return None
+        except Exception as e:
+            logger.error(f"❌ Ошибка скачивания файла: {e}")
+            return None
+
+    def send_upload_result(self, chat_id: str, added: int, duplicates: int,
+                           errors: int, total: int) -> bool:
+        """Отправляет сводку по результату ручной загрузки"""
+        keyboard = {"inline_keyboard": [[{"text": "◀️ В меню", "callback_data": "menu"}]]}
+        text = (
+            "✅ <b>Загрузка завершена</b>\n\n"
+            f"📦 Всего получено: <b>{total}</b>\n"
+            f"➕ Добавлено: <b>{added}</b>\n"
+            f"♻️ Дубликатов: <b>{duplicates}</b>\n"
+            f"⚠️ Ошибок: <b>{errors}</b>"
+        )
+        return self.send_message(text, reply_markup=keyboard, chat_id=chat_id) is not None
     
     def get_updates(self, timeout: int = 30) -> List[Dict]:
         """Получает обновления от Telegram (long polling)"""
@@ -541,6 +620,26 @@ class TelegramBot:
             # Отвечаем на callback query
             self.answer_callback_query(callback_id)
             
+            # Отмена режима загрузки токенов
+            if callback_data == 'upload_cancel':
+                self.cancel_upload(user_chat_id)
+                miniapp_url = None
+                try:
+                    from modules.cloudflare_helper import CloudflareHelper
+                    cf = CloudflareHelper()
+                    tunnel_url = cf.get_public_url()
+                    if tunnel_url and tunnel_url.startswith('https://'):
+                        miniapp_url = f"{tunnel_url}/miniapp"
+                except Exception as e:
+                    logger.debug(f"Cloudflare не доступен: {e}")
+                self.send_main_menu(chat_id=user_chat_id, message_id=message_id, miniapp_url=miniapp_url)
+                return
+
+            # Запрос ручной загрузки токенов
+            if callback_data == 'upload_tokens':
+                self.send_upload_prompt(chat_id=user_chat_id, message_id=message_id)
+                return
+
             # Специальная обработка кнопки "menu" (Назад)
             if callback_data == 'menu':
                 # Получаем актуальный miniapp_url от Cloudflare
@@ -582,16 +681,65 @@ class TelegramBot:
         # Обработка текстовых команд
         elif 'message' in update:
             message = update['message']
-            text = message.get('text', '')
+            text = message.get('text', '') or ''
+            document = message.get('document')
             from_user = message.get('from', {})
             user_chat_id = str(from_user.get('id', ''))
-            
-            logger.info(f"📱 Получено сообщение от {user_chat_id}: {text}")
-            
+
+            logger.info(f"📱 Получено сообщение от {user_chat_id}: "
+                        f"{'[document] ' + (document.get('file_name') or '') if document else text}")
+
+            # === Ручная загрузка токенов: документ (.txt) ===
+            if document and user_chat_id in self.pending_uploads:
+                file_name = document.get('file_name') or 'upload.txt'
+                mime = document.get('mime_type') or ''
+                if not (file_name.lower().endswith('.txt') or mime.startswith('text/')):
+                    self.send_message(
+                        "⚠️ Нужен текстовый файл (.txt). Попробуйте ещё раз или /cancel.",
+                        chat_id=user_chat_id
+                    )
+                    return
+
+                data_bytes = self.download_file(document['file_id'])
+                if data_bytes is None:
+                    self.send_message("❌ Не удалось скачать файл.", chat_id=user_chat_id)
+                    return
+                raw_text = data_bytes.decode('utf-8', errors='ignore')
+                self.cancel_upload(user_chat_id)
+                if self.token_upload_handler:
+                    try:
+                        self.token_upload_handler(user_chat_id, raw_text)
+                    except Exception as e:
+                        logger.error(f"❌ Ошибка обработки загрузки: {e}")
+                        self.send_error("Token Upload", str(e))
+                else:
+                    self.send_message("⚠️ Обработчик загрузки не настроен.", chat_id=user_chat_id)
+                return
+
+            # === Ручная загрузка токенов: текстовое сообщение ===
+            if text and not text.startswith('/') and user_chat_id in self.pending_uploads:
+                self.cancel_upload(user_chat_id)
+                if self.token_upload_handler:
+                    try:
+                        self.token_upload_handler(user_chat_id, text)
+                    except Exception as e:
+                        logger.error(f"❌ Ошибка обработки загрузки: {e}")
+                        self.send_error("Token Upload", str(e))
+                else:
+                    self.send_message("⚠️ Обработчик загрузки не настроен.", chat_id=user_chat_id)
+                return
+
             if text.startswith('/'):
                 command = text[1:].split()[0].split('@')[0]
                 logger.info(f"📱 Получена команда: /{command}")
-                
+
+                if command == 'cancel':
+                    if self.cancel_upload(user_chat_id):
+                        self.send_message("↩️ Загрузка отменена.", chat_id=user_chat_id)
+                    else:
+                        self.send_message("Нет активных операций.", chat_id=user_chat_id)
+                    return
+
                 if command == 'start' or command == 'menu':
                     # Получаем актуальный miniapp_url от Cloudflare
                     miniapp_url = None

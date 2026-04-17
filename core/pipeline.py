@@ -99,8 +99,85 @@ class TokenPipeline:
         self.telegram.register_command_handler('check_valid', self._handle_check_valid_command)
         self.telegram.register_command_handler('run_checker', self._handle_run_checker_command)
         self.telegram.register_command_handler('sellers_stats', self._handle_sellers_stats_command)
-        
+        self.telegram.register_command_handler('upload_tokens', self._handle_upload_tokens_command)
+        self.telegram.register_token_upload_handler(self._handle_tokens_uploaded)
+
         logger.info("✅ Команды Telegram бота зарегистрированы")
+
+    # ==================== РУЧНАЯ ЗАГРУЗКА ТОКЕНОВ ====================
+
+    def _handle_upload_tokens_command(self, chat_id: str = None, message_id: int = None):
+        """Переводит чат в режим ожидания токенов (txt-файл или список текстом)"""
+        try:
+            self.telegram.send_upload_prompt(chat_id=chat_id, message_id=message_id)
+        except Exception as e:
+            logger.error(f"❌ Ошибка при запросе загрузки токенов: {e}")
+            self.telegram.send_error("Upload Tokens", str(e))
+
+    def _handle_tokens_uploaded(self, chat_id: str, raw_text: str):
+        """
+        Принимает сырой текст с токенами (из .txt файла или сообщения),
+        парсит, добавляет в БД и в очередь валидации.
+        """
+        tokens = []
+        seen = set()
+        for line in raw_text.splitlines():
+            t = line.strip()
+            if not t or t.startswith('#'):
+                continue
+            # Формат "login:pass:token" — берём последний сегмент
+            if ':' in t and not t.startswith('mfa.'):
+                parts = [p.strip() for p in t.split(':') if p.strip()]
+                if parts:
+                    t = parts[-1]
+            if t in seen:
+                continue
+            seen.add(t)
+            tokens.append(t)
+
+        if not tokens:
+            self.telegram.send_message(
+                "⚠️ Не удалось распознать ни одного токена.",
+                chat_id=chat_id
+            )
+            return
+
+        added = 0
+        duplicates = 0
+        errors = 0
+
+        for token in tokens:
+            try:
+                token_id = self.db.add_token(
+                    token=token,
+                    seller_username='manual_upload',
+                    price=0
+                )
+                if token_id:
+                    added += 1
+                    self.new_tokens_queue.put({
+                        'token': token,
+                        'item_id': None,
+                        'username': 'Manual',
+                        'seller_username': 'manual_upload',
+                        'price': 0
+                    })
+                else:
+                    duplicates += 1
+            except Exception as e:
+                logger.error(f"❌ Ошибка добавления токена: {e}")
+                errors += 1
+
+        logger.info(f"📥 Ручная загрузка от {chat_id}: всего {len(tokens)}, "
+                    f"добавлено {added}, дубликатов {duplicates}, ошибок {errors}")
+
+        self.telegram.send_upload_result(
+            chat_id=chat_id,
+            added=added,
+            duplicates=duplicates,
+            errors=errors,
+            total=len(tokens)
+        )
     
     # ==================== ОБРАБОТЧИКИ КОМАНД ====================
     
