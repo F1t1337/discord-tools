@@ -563,8 +563,7 @@ class TelegramBot:
         text = (
             "✅ <b>Загрузка завершена</b>\n\n"
             f"📦 Всего получено: <b>{total}</b>\n"
-            f"➕ Добавлено: <b>{added}</b>\n"
-            f"♻️ Дубликатов: <b>{duplicates}</b>\n"
+            f"➕ Принято: <b>{added}</b>\n"
             f"⚠️ Ошибок: <b>{errors}</b>"
         )
         return self.send_message(text, reply_markup=keyboard, chat_id=chat_id) is not None

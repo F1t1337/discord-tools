@@ -120,7 +120,6 @@ class TokenPipeline:
         парсит, добавляет в БД и в очередь валидации.
         """
         tokens = []
-        seen = set()
         for line in raw_text.splitlines():
             t = line.strip()
             if not t or t.startswith('#'):
@@ -130,9 +129,6 @@ class TokenPipeline:
                 parts = [p.strip() for p in t.split(':') if p.strip()]
                 if parts:
                     t = parts[-1]
-            if t in seen:
-                continue
-            seen.add(t)
             tokens.append(t)
 
         if not tokens:
@@ -143,38 +139,40 @@ class TokenPipeline:
             return
 
         added = 0
-        duplicates = 0
         errors = 0
 
         for token in tokens:
             try:
-                token_id = self.db.add_token(
-                    token=token,
-                    seller_username='manual_upload',
-                    price=0
-                )
-                if token_id:
-                    added += 1
-                    self.new_tokens_queue.put({
-                        'token': token,
-                        'item_id': None,
-                        'username': 'Manual',
-                        'seller_username': 'manual_upload',
-                        'price': 0
-                    })
-                else:
-                    duplicates += 1
+                # Пытаемся добавить в БД, но при дубликате всё равно
+                # кладём токен в очередь валидации — уникальность не проверяем.
+                try:
+                    self.db.add_token(
+                        token=token,
+                        seller_username='manual_upload',
+                        price=0
+                    )
+                except Exception as db_err:
+                    logger.debug(f"add_token: {db_err}")
+
+                self.new_tokens_queue.put({
+                    'token': token,
+                    'item_id': None,
+                    'username': 'Manual',
+                    'seller_username': 'manual_upload',
+                    'price': 0
+                })
+                added += 1
             except Exception as e:
                 logger.error(f"❌ Ошибка добавления токена: {e}")
                 errors += 1
 
         logger.info(f"📥 Ручная загрузка от {chat_id}: всего {len(tokens)}, "
-                    f"добавлено {added}, дубликатов {duplicates}, ошибок {errors}")
+                    f"принято {added}, ошибок {errors}")
 
         self.telegram.send_upload_result(
             chat_id=chat_id,
             added=added,
-            duplicates=duplicates,
+            duplicates=0,
             errors=errors,
             total=len(tokens)
         )
