@@ -26,7 +26,7 @@ def test_connection():
     print("ТЕСТ 1: Проверка подключения к LZT API")
     print("=" * 60)
 
-    API_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzUxMiJ9.eyJzdWIiOjI2MTU0MjYsImlzcyI6Imx6dCIsImlhdCI6MTc2OTEyMjQzNSwianRpIjoiOTE3OTUwIiwic2NvcGUiOiJiYXNpYyByZWFkIHBvc3QgY29udmVyc2F0ZSBwYXltZW50IGludm9pY2UgY2hhdGJveCBtYXJrZXQiLCJleHAiOjE5MjY4MDI0MzV9.AFeSm1asGqoNbXtKUsMauLX5NljumPAcxjayGALPH3qinUWknODFSsvY5wUVpPku5-pZnuMWtYeXypy40RASSDZ4HrstgeWDmx8DFH11cDHUzPiOgl7r1YgrLSnwGreMA540GJQlC6fU2RolXGDwRp_uNuIZibh9RRzAYQlum3k"
+    API_TOKEN = os.environ.get("LZT_API_TOKEN", "")
 
     monitor = LZTMonitor(api_token=API_TOKEN)
 
@@ -48,7 +48,7 @@ def test_get_purchases():
     print("ТЕСТ 2: Получение купленных аккаунтов Discord")
     print("=" * 60)
 
-    API_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzUxMiJ9.eyJzdWIiOjI2MTU0MjYsImlzcyI6Imx6dCIsImlhdCI6MTc2OTEyMjQzNSwianRpIjoiOTE3OTUwIiwic2NvcGUiOiJiYXNpYyByZWFkIHBvc3QgY29udmVyc2F0ZSBwYXltZW50IGludm9pY2UgY2hhdGJveCBtYXJrZXQiLCJleHAiOjE5MjY4MDI0MzV9.AFeSm1asGqoNbXtKUsMauLX5NljumPAcxjayGALPH3qinUWknODFSsvY5wUVpPku5-pZnuMWtYeXypy40RASSDZ4HrstgeWDmx8DFH11cDHUzPiOgl7r1YgrLSnwGreMA540GJQlC6fU2RolXGDwRp_uNuIZibh9RRzAYQlum3k"
+    API_TOKEN = os.environ.get("LZT_API_TOKEN", "")
 
     monitor = LZTMonitor(api_token=API_TOKEN)
 
@@ -78,7 +78,7 @@ def test_account_details(item_id=None):
     print("ТЕСТ 3: Детальная информация об аккаунте")
     print("=" * 60)
 
-    API_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzUxMiJ9.eyJzdWIiOjI2MTU0MjYsImlzcyI6Imx6dCIsImlhdCI6MTc2OTEyMjQzNSwianRpIjoiOTE3OTUwIiwic2NvcGUiOiJiYXNpYyByZWFkIHBvc3QgY29udmVyc2F0ZSBwYXltZW50IGludm9pY2UgY2hhdGJveCBtYXJrZXQiLCJleHAiOjE5MjY4MDI0MzV9.AFeSm1asGqoNbXtKUsMauLX5NljumPAcxjayGALPH3qinUWknODFSsvY5wUVpPku5-pZnuMWtYeXypy40RASSDZ4HrstgeWDmx8DFH11cDHUzPiOgl7r1YgrLSnwGreMA540GJQlC6fU2RolXGDwRp_uNuIZibh9RRzAYQlum3k"
+    API_TOKEN = os.environ.get("LZT_API_TOKEN", "")
 
     monitor = LZTMonitor(api_token=API_TOKEN)
 
@@ -120,7 +120,7 @@ def test_account_goods(item_id=None):
     print("ТЕСТ 4: Получение данных для входа (goods)")
     print("=" * 60)
 
-    API_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzUxMiJ9.eyJzdWIiOjI2MTU0MjYsImlzcyI6Imx6dCIsImlhdCI6MTc2OTEyMjQzNSwianRpIjoiOTE3OTUwIiwic2NvcGUiOiJiYXNpYyByZWFkIHBvc3QgY29udmVyc2F0ZSBwYXltZW50IGludm9pY2UgY2hhdGJveCBtYXJrZXQiLCJleHAiOjE5MjY4MDI0MzV9.AFeSm1asGqoNbXtKUsMauLX5NljumPAcxjayGALPH3qinUWknODFSsvY5wUVpPku5-pZnuMWtYeXypy40RASSDZ4HrstgeWDmx8DFH11cDHUzPiOgl7r1YgrLSnwGreMA540GJQlC6fU2RolXGDwRp_uNuIZibh9RRzAYQlum3k"
+    API_TOKEN = os.environ.get("LZT_API_TOKEN", "")
 
     monitor = LZTMonitor(api_token=API_TOKEN)
 
@@ -161,7 +161,7 @@ def test_token_extraction(item_id=None):
     print("ТЕСТ 5: Извлечение Discord токена")
     print("=" * 60)
 
-    API_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzUxMiJ9.eyJzdWIiOjI2MTU0MjYsImlzcyI6Imx6dCIsImlhdCI6MTc2OTEyMjQzNSwianRpIjoiOTE3OTUwIiwic2NvcGUiOiJiYXNpYyByZWFkIHBvc3QgY29udmVyc2F0ZSBwYXltZW50IGludm9pY2UgY2hhdGJveCBtYXJrZXQiLCJleHAiOjE5MjY4MDI0MzV9.AFeSm1asGqoNbXtKUsMauLX5NljumPAcxjayGALPH3qinUWknODFSsvY5wUVpPku5-pZnuMWtYeXypy40RASSDZ4HrstgeWDmx8DFH11cDHUzPiOgl7r1YgrLSnwGreMA540GJQlC6fU2RolXGDwRp_uNuIZibh9RRzAYQlum3k"
+    API_TOKEN = os.environ.get("LZT_API_TOKEN", "")
 
     monitor = LZTMonitor(api_token=API_TOKEN)
 

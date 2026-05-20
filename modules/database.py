@@ -165,7 +165,7 @@ class Database:
                 timestamp_field = 'validated_at'
             elif status == 'cleaned':
                 timestamp_field = 'cleaned_at'
-            elif status == 'sent':
+            elif status in ('sent', 'sold'):
                 timestamp_field = 'sent_at'
             
             if timestamp_field:
@@ -182,6 +182,52 @@ class Database:
                 """, (status, username, error, cleaning_progress, token))
             
             logger.info(f"🔄 Статус токена обновлен: {status}")
+
+    def update_token_status_by_id(self, token_id: int, status: str, username: str = None,
+                                  error: str = None, cleaning_progress: str = None) -> bool:
+        """
+        Обновляет статус токена по внутреннему ID без необходимости доставать сам токен.
+
+        Args:
+            token_id: ID записи в таблице tokens
+            status: Новый статус
+            username: Username (если нужно обновить)
+            error: Текст ошибки
+            cleaning_progress: Прогресс очистки
+
+        Returns:
+            True если запись найдена и обновлена.
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            timestamp_field = None
+            if status == 'validated':
+                timestamp_field = 'validated_at'
+            elif status == 'cleaned':
+                timestamp_field = 'cleaned_at'
+            elif status in ('sent', 'sold'):
+                timestamp_field = 'sent_at'
+
+            if timestamp_field:
+                cursor.execute(f"""
+                    UPDATE tokens 
+                    SET status = ?, username = COALESCE(?, username), error = ?, cleaning_progress = ?, {timestamp_field} = ?
+                    WHERE id = ?
+                """, (status, username, error, cleaning_progress, datetime.now().timestamp(), token_id))
+            else:
+                cursor.execute("""
+                    UPDATE tokens 
+                    SET status = ?, username = COALESCE(?, username), error = ?, cleaning_progress = ?
+                    WHERE id = ?
+                """, (status, username, error, cleaning_progress, token_id))
+
+            updated = cursor.rowcount > 0
+            if updated:
+                logger.info(f"🔄 Статус токена #{token_id} обновлен: {status}")
+            else:
+                logger.warning(f"⚠️ Токен #{token_id} не найден для обновления статуса {status}")
+            return updated
     
     def get_tokens_by_status(self, status: str) -> List[Dict]:
         """

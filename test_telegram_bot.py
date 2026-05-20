@@ -8,8 +8,8 @@ from modules.telegram_bot import TelegramBot
 from modules.database import Database
 
 # ВАЖНО: Замените на свои данные!
-BOT_TOKEN = "8418859791:AAF0vdC-J0lVnXVDhYl7aVGMcJBYexYShdU"  # Получите у @BotFather
-CHAT_ID = "934727036"      # Ваш Telegram ID
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 
 def test_connection():
@@ -257,13 +257,13 @@ def main():
     print("1. Создайте бота через @BotFather")
     print("2. Получите BOT_TOKEN")
     print("3. Узнайте свой CHAT_ID через @userinfobot")
-    print("4. Замените их в начале файла test_telegram_bot.py")
+    print("4. Запишите их в TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID")
     print("5. Напишите боту /start")
     
     # Проверяем настройки
-    if BOT_TOKEN == "your_bot_token_here" or CHAT_ID == "your_chat_id_here":
+    if not BOT_TOKEN or not CHAT_ID:
         print("\n❌ ОШИБКА: Настройте BOT_TOKEN и CHAT_ID!")
-        print("Откройте файл test_telegram_bot.py и замените значения.")
+        print("Заполните TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID в .env.")
         return
     
     try:

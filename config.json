@@ -1,6 +1,6 @@
 {
   "lzt": {
-    "api_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzUxMiJ9.eyJzdWIiOjI2MTU0MjYsImlzcyI6Imx6dCIsImlhdCI6MTc2OTE5ODQ5NSwianRpIjoiOTE4MzM5Iiwic2NvcGUiOiJiYXNpYyByZWFkIHBvc3QgY29udmVyc2F0ZSBwYXltZW50IGludm9pY2UgY2hhdGJveCBtYXJrZXQiLCJleHAiOjE5MjY4Nzg0OTV9.h-4coumbxAbNnGdRzQhPmb8UOYxxICVm_kB-vrZlXhq_uEl44dPkH9gQi1KldJq5s2u-mez7sAStCcJHzws06Onxw2iSdtieU3KSuCyixLcryt3MXwxXTsBb45lLSrzOG5kJno_25jo4yMbPzB3SzAUIK0r05IDKVN3zjKeFijc",
+    "api_token": "${LZT_API_TOKEN}",
     "check_interval": 10,
     "min_balance_alert": 100.0
   },
@@ -19,8 +19,8 @@
   },
   
   "telegram": {
-    "bot_token": "8418859791:AAF0vdC-J0lVnXVDhYl7aVGMcJBYexYShdU",
-    "chat_id": "934727036",
+    "bot_token": "${TELEGRAM_BOT_TOKEN}",
+    "chat_id": "${TELEGRAM_CHAT_ID}",
     "min_tokens": 30,
     "max_tokens": 50,
     "notification_threshold": 40
@@ -45,6 +45,28 @@
     "enabled": true,
     "host": "0.0.0.0",
     "port": 5000
+  },
+
+  "sales": {
+    "enabled": true,
+    "mode": "price_workflow",
+    "provider": "tskupka",
+    "outbox_path": "data/sales/submissions.jsonl",
+    "allow_external_token_submit": false,
+    "timeout": 20,
+    "providers": {
+      "tskupka": {
+        "api_key_env": "TSKUPKA_API_KEY"
+      },
+      "tokenbuyrobot": {
+        "api_key_env": "TOKENBUYROBOT_API_KEY"
+      }
+    },
+    "workflow": {
+      "price_initial_delay": 10,
+      "price_poll_interval": 10,
+      "completion_poll_interval": 30
+    }
   },
   
   "live_stats": {

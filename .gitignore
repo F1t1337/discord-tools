@@ -8,3 +8,6 @@
 .worktrees/
 .security-key
 logs/security/
+
+# Local secrets
+.env

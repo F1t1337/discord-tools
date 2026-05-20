@@ -118,7 +118,7 @@ def get_tokens():
         else:
             # Получаем все статусы
             all_tokens = []
-            for s in ['new', 'validated', 'cleaning', 'cleaned', 'ready', 'sent', 'invalid', 'locked']:
+            for s in ['new', 'validated', 'cleaning', 'cleaned', 'ready', 'sale_pending', 'sent', 'invalid', 'locked']:
                 all_tokens.extend(db.get_tokens_by_status(s))
             tokens = sorted(all_tokens, key=lambda x: x['created_at'], reverse=True)[:limit]
         
@@ -186,6 +186,119 @@ def get_balance():
         })
     except Exception as e:
         logger.error(f"Error getting balance: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ==================== ПРОДАЖИ ====================
+
+def _set_submission_items_status(submission, status):
+    """Обновляет позиции sales-заявки по внутренним ID без отдачи токенов наружу."""
+    updated = 0
+    for item in submission.get('items', []):
+        db_id = item.get('db_id')
+        if not db_id:
+            continue
+        if db.update_token_status_by_id(db_id, status=status):
+            updated += 1
+    return updated
+
+
+@app.route('/api/sales')
+def get_sales_summary():
+    """Получить сводку по локальным заявкам продажи"""
+    try:
+        if not pipeline or not pipeline.sales:
+            return jsonify({'error': 'Sales module not initialized'}), 500
+        return jsonify(pipeline.sales.get_summary(limit=10))
+    except Exception as e:
+        logger.error(f"Error getting sales summary: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sales/submissions')
+def get_sales_submissions():
+    """Получить локальные заявки продажи"""
+    try:
+        if not pipeline or not pipeline.sales:
+            return jsonify({'error': 'Sales module not initialized'}), 500
+
+        limit = request.args.get('limit', 50, type=int)
+        status = request.args.get('status')
+        return jsonify(pipeline.sales.list_submissions(limit=limit, status=status))
+    except Exception as e:
+        logger.error(f"Error getting sales submissions: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sales/submissions/<submission_id>/sold', methods=['POST'])
+def mark_sales_submission_sold(submission_id):
+    """Пометить локальную sales-заявку как проданную"""
+    try:
+        if not pipeline or not pipeline.sales:
+            return jsonify({'error': 'Sales module not initialized'}), 500
+
+        result = pipeline.sales.mark_sold(submission_id)
+        if not result.get('ok'):
+            return jsonify({'success': False, 'error': result.get('error')}), 400
+
+        updated = _set_submission_items_status(result['submission'], 'sent')
+        db.update_statistics(tokens_sent=updated)
+        return jsonify({'success': True, 'updated': updated, 'submission': result['submission']})
+    except Exception as e:
+        logger.error(f"Error marking sales submission sold: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sales/submissions/<submission_id>/submit', methods=['POST'])
+def submit_sales_submission(submission_id):
+    """Повторно отправить локальную sales-заявку во внешний API"""
+    try:
+        if not pipeline or not pipeline.sales:
+            return jsonify({'error': 'Sales module not initialized'}), 500
+
+        result = pipeline.sales.submit_submission(submission_id)
+        if not result.get('ok'):
+            return jsonify({'success': False, 'error': result.get('error'), 'submission': result.get('submission')}), 400
+
+        return jsonify({'success': True, 'submission': result['submission']})
+    except Exception as e:
+        logger.error(f"Error submitting sales submission: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sales/submissions/<submission_id>/workflow', methods=['POST'])
+def run_sales_submission_workflow(submission_id):
+    """Запустить полный tskupka -> tokenbuyrobot workflow для существующей заявки"""
+    try:
+        if not pipeline or not pipeline.sales:
+            return jsonify({'error': 'Sales module not initialized'}), 500
+
+        submission = pipeline.sales.get_submission(submission_id)
+        if not submission:
+            return jsonify({'success': False, 'error': 'Submission not found'}), 404
+
+        pipeline._start_sales_workflow(submission_id)
+        return jsonify({'success': True, 'message': 'Workflow started', 'submission': submission})
+    except Exception as e:
+        logger.error(f"Error running sales workflow: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sales/submissions/<submission_id>/cancel', methods=['POST'])
+def cancel_sales_submission(submission_id):
+    """Отменить локальную sales-заявку"""
+    try:
+        if not pipeline or not pipeline.sales:
+            return jsonify({'error': 'Sales module not initialized'}), 500
+
+        result = pipeline.sales.cancel_submission(submission_id)
+        if not result.get('ok'):
+            return jsonify({'success': False, 'error': result.get('error')}), 400
+
+        updated = _set_submission_items_status(result['submission'], 'ready')
+        return jsonify({'success': True, 'updated': updated, 'submission': result['submission']})
+    except Exception as e:
+        logger.error(f"Error canceling sales submission: {e}")
         return jsonify({'error': str(e)}), 500
 
 

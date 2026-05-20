@@ -7,7 +7,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from modules.database import Database
 from modules.lzt_monitor import LZTMonitor
 
-API_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzUxMiJ9.eyJzdWIiOjI2MTU0MjYsImlzcyI6Imx6dCIsImlhdCI6MTc2OTE5ODQ5NSwianRpIjoiOTE4MzM5Iiwic2NvcGUiOiJiYXNpYyByZWFkIHBvc3QgY29udmVyc2F0ZSBwYXltZW50IGludm9pY2UgY2hhdGJveCBtYXJrZXQiLCJleHAiOjE5MjY4Nzg0OTV9.h-4coumbxAbNnGdRzQhPmb8UOYxxICVm_kB-vrZlXhq_uEl44dPkH9gQi1KldJq5s2u-mez7sAStCcJHzws06Onxw2iSdtieU3KSuCyixLcryt3MXwxXTsBb45lLSrzOG5kJno_25jo4yMbPzB3SzAUIK0r05IDKVN3zjKeFijc"
+API_TOKEN = os.environ.get("LZT_API_TOKEN", "")
 
 
 def test_basic_operations():

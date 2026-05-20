@@ -133,6 +133,9 @@ class TelegramBot:
             [
                 {"text": "👥 Продавцы", "callback_data": "sellers_stats"},
                 {"text": "🌐 Dashboard URL", "callback_data": "dashboard_url"}
+            ],
+            [
+                {"text": "🧾 Продажа", "callback_data": "sales_status"}
             ]
         ]
         
@@ -384,6 +387,7 @@ class TelegramBot:
             f"🧹 Очищаются: {counts.get('cleaning', 0)}\n"
             f"✨ Очищены: {counts.get('cleaned', 0)}\n"
             f"📦 Готовы: {counts.get('ready', 0)}\n"
+            f"🧾 В продаже: {counts.get('sale_pending', 0)}\n"
             f"📤 Отправлены: {counts.get('sent', 0)}\n"
             f"❌ Невалидные: {counts.get('invalid', 0)}"
         )
@@ -393,7 +397,7 @@ class TelegramBot:
         else:
             result = self.send_message(text, reply_markup=keyboard, chat_id=chat_id)
             return result is not None
-    
+
     def send_dashboard_url(self, tunnel_url: str = None, chat_id: str = None, message_id: int = None) -> bool:
         """Отправляет или редактирует информацию о Dashboard URL"""
         # Кнопка "Назад"
@@ -478,6 +482,91 @@ class TelegramBot:
         
         result = self.send_message(text, chat_id=chat_id)
         return result is not None
+
+    def send_sales_status(self, summary: Dict, chat_id: str = None, message_id: int = None) -> bool:
+        """Отправляет статус локальной очереди продаж."""
+        if not summary.get("enabled"):
+            text = (
+                "🧾 <b>Продажа</b>\n\n"
+                "⚠️ Модуль продаж выключен в config.json.\n\n"
+                "Готовые токены сейчас отправляются обычным файлом."
+            )
+            keyboard = {"inline_keyboard": [[{"text": "◀️ Назад", "callback_data": "menu"}]]}
+        else:
+            text = (
+                "🧾 <b>Продажа</b>\n\n"
+                f"Провайдер: <b>{summary.get('provider', 'local')}</b>\n"
+                f"Режим: <b>{summary.get('mode', 'local_queue')}</b>\n\n"
+                f"⏳ Ожидают: <b>{summary.get('pending', 0)}</b> заявок / "
+                f"<b>{summary.get('items_pending', 0)}</b> позиций\n"
+                f"🚀 Отправлено API: <b>{summary.get('submitted', 0)}</b>\n"
+                f"⚠️ Submit ошибок: <b>{summary.get('submit_failed', 0)}</b>\n"
+                f"✅ Продано: <b>{summary.get('sold', 0)}</b> заявок / "
+                f"<b>{summary.get('items_sold', 0)}</b> позиций\n"
+                f"↩️ Отменено: <b>{summary.get('canceled', 0)}</b>\n\n"
+            )
+
+            recent = summary.get("recent_submissions", [])
+            active = [
+                item for item in recent
+                if str(item.get("status", "")).upper() not in {"SOLD", "CANCELED", "COMPLETED"}
+            ]
+
+            if recent:
+                text += "<b>Последние заявки:</b>\n"
+                for item in recent[:5]:
+                    sid = item.get("submission_id", "unknown")
+                    short_id = sid[-8:] if len(sid) > 8 else sid
+                    workflow = item.get("workflow") or {}
+                    prices = []
+                    if workflow.get("tskupka_price") is not None:
+                        prices.append(f"tsk {workflow['tskupka_price']}")
+                    if workflow.get("tokenbuyrobot_price") is not None:
+                        prices.append(f"tbr {workflow['tokenbuyrobot_price']}")
+                    price_text = f" | {' / '.join(prices)}" if prices else ""
+                    text += (
+                        f"• <code>{short_id}</code> "
+                        f"{item.get('status', 'UNKNOWN')} | "
+                        f"{item.get('accepted_count', 0)} шт. | "
+                        f"{float(item.get('total_price') or 0):.0f} ₽"
+                        f"{price_text}\n"
+                    )
+            else:
+                text += "Пока нет заявок."
+
+            keyboard_rows = []
+            for item in active[:3]:
+                sid = item.get("submission_id")
+                short_id = sid[-8:] if sid and len(sid) > 8 else sid
+                keyboard_rows.append([
+                    {"text": f"✅ Продано {short_id}", "callback_data": f"sales_done:{sid}"},
+                    {"text": f"↩️ Отмена {short_id}", "callback_data": f"sales_cancel:{sid}"},
+                ])
+
+            keyboard_rows.append([{"text": "🔄 Обновить", "callback_data": "sales_status"}])
+            keyboard_rows.append([{"text": "◀️ Назад", "callback_data": "menu"}])
+            keyboard = {"inline_keyboard": keyboard_rows}
+
+        if message_id:
+            return self.edit_message(message_id, text, reply_markup=keyboard, chat_id=chat_id)
+        result = self.send_message(text, reply_markup=keyboard, chat_id=chat_id)
+        return result is not None
+
+    def send_sale_action_result(self, title: str, message: str, success: bool = True,
+                                chat_id: str = None, message_id: int = None) -> bool:
+        """Показывает результат действия с заявкой."""
+        emoji = "✅" if success else "❌"
+        keyboard = {
+            "inline_keyboard": [
+                [{"text": "🧾 К продаже", "callback_data": "sales_status"}],
+                [{"text": "◀️ В меню", "callback_data": "menu"}],
+            ]
+        }
+        text = f"{emoji} <b>{title}</b>\n\n{message}"
+
+        if message_id:
+            return self.edit_message(message_id, text, reply_markup=keyboard, chat_id=chat_id)
+        return self.send_message(text, reply_markup=keyboard, chat_id=chat_id) is not None
     
     def send_insufficient_tokens_error(self, current: int, required: int, chat_id: str = None) -> bool:
         """Отправляет ошибку о недостаточном количестве токенов"""
@@ -598,6 +687,27 @@ class TelegramBot:
         
         result = self._send_request("answerCallbackQuery", data=data)
         return result and result.get('ok')
+
+    def _dispatch_command_handler(self, command: str, chat_id: str = None,
+                                  message_id: int = None, payload: str = None) -> bool:
+        """Вызывает обработчик команды с учетом поддерживаемых аргументов."""
+        handler = self.command_handlers.get(command)
+        if not handler:
+            return False
+
+        import inspect
+        sig = inspect.signature(handler)
+        params = list(sig.parameters.keys())
+
+        if len(params) >= 3:
+            handler(chat_id, message_id, payload)
+        elif len(params) == 2:
+            handler(chat_id, message_id)
+        elif len(params) == 1:
+            handler(chat_id)
+        else:
+            handler()
+        return True
     
     def process_update(self, update: Dict):
         """Обрабатывает одно обновление"""
@@ -656,21 +766,15 @@ class TelegramBot:
                 self.send_main_menu(chat_id=user_chat_id, message_id=message_id, miniapp_url=miniapp_url)
                 return
             
+            command = callback_data
+            payload = None
+            if callback_data and ':' in callback_data:
+                command, payload = callback_data.split(':', 1)
+
             # Вызываем обработчик команды
-            if callback_data in self.command_handlers:
+            if command in self.command_handlers:
                 try:
-                    handler = self.command_handlers[callback_data]
-                    import inspect
-                    sig = inspect.signature(handler)
-                    params = list(sig.parameters.keys())
-                    
-                    # Передаем chat_id и message_id если обработчик их принимает
-                    if len(params) >= 2:
-                        handler(user_chat_id, message_id)
-                    elif len(params) == 1:
-                        handler(user_chat_id)
-                    else:
-                        handler()
+                    self._dispatch_command_handler(command, user_chat_id, message_id, payload)
                 except Exception as e:
                     logger.error(f"❌ Ошибка выполнения команды {callback_data}: {e}")
                     self.send_error("Command Handler", str(e))
@@ -729,7 +833,9 @@ class TelegramBot:
                 return
 
             if text.startswith('/'):
-                command = text[1:].split()[0].split('@')[0]
+                parts = text[1:].split(maxsplit=1)
+                command = parts[0].split('@')[0]
+                payload = parts[1].strip() if len(parts) > 1 else None
                 logger.info(f"📱 Получена команда: /{command}")
 
                 if command == 'cancel':
@@ -755,13 +861,7 @@ class TelegramBot:
                     self.send_main_menu(chat_id=user_chat_id, miniapp_url=miniapp_url)
                 elif command in self.command_handlers:
                     try:
-                        handler = self.command_handlers[command]
-                        import inspect
-                        sig = inspect.signature(handler)
-                        if len(sig.parameters) > 0:
-                            handler(user_chat_id)
-                        else:
-                            handler()
+                        self._dispatch_command_handler(command, user_chat_id, None, payload)
                     except Exception as e:
                         logger.error(f"❌ Ошибка выполнения команды /{command}: {e}")
                         self.send_error("Command Handler", str(e))
