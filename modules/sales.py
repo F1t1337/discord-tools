@@ -222,7 +222,15 @@ class SalesManager:
           f"Жду завершения (макс {int(self.tskupka_confirm_timeout / 60)} мин)...", "INFO")
 
         remaining = max(0, self.tskupka_confirm_timeout - (time.monotonic() - tsk_time))
-        self._poll_completion("tokenbuyrobot", tbr_id, submission_id, notify_cb, timeout=remaining)
+        completion = self._poll_completion("tokenbuyrobot", tbr_id, submission_id, notify_cb, timeout=remaining)
+
+        # Обновляем цену tokenbuyrobot из final_payment (реальная сумма после завершения)
+        completion_data = completion.get("data") if completion else None
+        if completion_data:
+            final_payment = self._extract_field(completion_data, "final_payment")
+            if final_payment is not None and final_payment > 0:
+                tbr_price = final_payment
+                logger.info("💰 tokenbuyrobot final_payment: %s", tbr_price)
 
         # 4. Confirm tskupka (всегда, даже если tokenbuyrobot не завершился)
         n("🧾 Workflow", "Подтверждаю tskupka...", "INFO")
@@ -338,7 +346,7 @@ class SalesManager:
             if self._is_done(status):
                 if notify_cb:
                     notify_cb(f"✅ {provider} завершена", f"Статус: <b>{status}</b>", "SUCCESS")
-                return status
+                return {"status": status, "data": result.get("data")}
 
             if self._is_failed(status):
                 raise RuntimeError(f"{provider} задача отклонена: {status}")
@@ -347,7 +355,7 @@ class SalesManager:
                 if notify_cb:
                     notify_cb(f"⏰ {provider} таймаут",
                               f"Время вышло, статус: <b>{status or 'unknown'}</b>", "WARNING")
-                return status
+                return {"status": status, "data": result.get("data")}
 
             if notify_cb:
                 notify_cb(
@@ -589,6 +597,17 @@ class SalesManager:
                 s = self._find_status(v)
                 if s:
                     return s
+        return None
+
+    def _extract_field(self, data, field_name):
+        """Извлекает числовое значение конкретного поля из ответа (рекурсивно)."""
+        if isinstance(data, dict):
+            if field_name in data:
+                return self._num(data[field_name])
+            for v in data.values():
+                result = self._extract_field(v, field_name)
+                if result is not None:
+                    return result
         return None
 
     def _is_done(self, status) -> bool:
