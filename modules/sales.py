@@ -34,6 +34,7 @@ class SalesManager:
     CANCELED_STATUS = "CANCELED"
     CLOSED_STATUSES = {CANCELED_STATUS, COMPLETED_STATUS}
     COMPLETED_PROVIDER_STATUSES = {"completed", "complete", "done", "finished", "success", "succeeded"}
+    FAILED_PROVIDER_STATUSES = {"cancelled", "canceled", "failed", "rejected", "error", "expired"}
 
     PROVIDERS = {
         "tokenbuyrobot": {
@@ -295,6 +296,10 @@ class SalesManager:
             if not result.get("ok"):
                 raise RuntimeError(result.get("error") or f"{provider} status failed")
 
+            status = self._find_status(result.get("data"))
+            if self._is_failed(status):
+                raise RuntimeError(f"{provider} задача отклонена: {status}")
+
             price = self._find_price(result.get("data"))
             if price is not None and price > 0:
                 wf = (self.get_submission(submission_id) or {}).get("workflow", {})
@@ -305,8 +310,8 @@ class SalesManager:
             if notify_cb:
                 notify_cb(
                     f"⏳ {provider}",
-                    f"Жду цену... (проверка через {int(self.price_poll_interval)} сек.)",
-                    "INFO",
+                    f"Жду цену... статус: <b>{status or '?'}</b>",
+                    "POLL",
                 )
             time.sleep(self.price_poll_interval)
 
@@ -331,6 +336,9 @@ class SalesManager:
                     notify_cb(f"✅ {provider} завершена", f"Статус: <b>{status}</b>", "SUCCESS")
                 return status
 
+            if self._is_failed(status):
+                raise RuntimeError(f"{provider} задача отклонена: {status}")
+
             if deadline and time.monotonic() >= deadline:
                 if notify_cb:
                     notify_cb(f"⏰ {provider} таймаут",
@@ -342,7 +350,7 @@ class SalesManager:
                     f"⏳ {provider}",
                     f"Статус: <b>{status or 'unknown'}</b>, "
                     f"проверка через {int(self.completion_poll_interval)} сек.",
-                    "INFO",
+                    "POLL",
                 )
             time.sleep(self.completion_poll_interval)
 
@@ -579,6 +587,11 @@ class SalesManager:
         if not status:
             return False
         return str(status).strip().lower() in self.COMPLETED_PROVIDER_STATUSES
+
+    def _is_failed(self, status) -> bool:
+        if not status:
+            return False
+        return str(status).strip().lower() in self.FAILED_PROVIDER_STATUSES
 
     def _num(self, value):
         if isinstance(value, (int, float)):

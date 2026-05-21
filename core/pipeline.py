@@ -374,13 +374,23 @@ class TokenPipeline:
         self.threads.append(thread)
 
     def _sales_workflow_worker(self, submission_id: str, chat_id: str = None):
+        poll_message_id = None
+
         def notify(title: str, message: str, level: str):
-            self.telegram.send_notification(
-                title=title,
-                message=f"<code>{submission_id}</code>\n\n{message}",
-                level=level,
-                chat_id=chat_id,
-            )
+            nonlocal poll_message_id
+
+            emoji = {"INFO": "ℹ️", "WARNING": "⚠️", "ERROR": "❌",
+                     "SUCCESS": "✅", "POLL": "⏳"}.get(level, "📢")
+            text = f"{emoji} <b>{title}</b>\n\n<code>{submission_id}</code>\n\n{message}"
+
+            if level == "POLL":
+                if poll_message_id:
+                    self.telegram.edit_message(poll_message_id, text, chat_id=chat_id)
+                else:
+                    poll_message_id = self.telegram.send_message(text, chat_id=chat_id)
+            else:
+                poll_message_id = None
+                self.telegram.send_message(text, chat_id=chat_id)
 
         result = self.sales.run_workflow(submission_id, notify_callback=notify)
         if result.get('ok'):
