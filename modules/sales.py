@@ -384,7 +384,10 @@ class SalesManager:
             return {"ok": False, "error": str(e)}
 
         data = self._json(resp)
-        ok = 200 <= resp.status_code < 300
+        # 409 = уже подтверждено (auto-approved), считаем успехом
+        ok = 200 <= resp.status_code < 300 or resp.status_code == 409
+        if resp.status_code == 409:
+            logger.info("✅ %s confirm: auto-approved (409), pid=%s", provider, pid)
         return {"ok": ok, "error": None if ok else self._err(resp, data), "data": data}
 
     # ── storage ────────────────────────────────────────────────
