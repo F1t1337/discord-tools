@@ -112,64 +112,26 @@ class TelegramBot:
         return False
     
     def send_main_menu(self, chat_id: str = None, message_id: int = None, miniapp_url: str = None):
-        """Отправляет или редактирует главное меню с кнопками управления"""
+        """Отправляет или редактирует главное меню"""
         keyboard_buttons = [
             [
                 {"text": "📊 Статистика", "callback_data": "stats"},
-                {"text": "💰 Баланс LZT", "callback_data": "balance"}
+                {"text": "💰 Баланс LZT", "callback_data": "balance"},
             ],
             [
-                {"text": "📦 Отправить токены", "callback_data": "send_tokens"},
+                {"text": "📦 Продать токены", "callback_data": "send_tokens"},
                 {"text": "📥 Загрузить токены", "callback_data": "upload_tokens"},
             ],
             [
-                {"text": "✅ Проверить валид", "callback_data": "check_valid"},
-                {"text": "🔍 Запустить чекер", "callback_data": "run_checker"},
+                {"text": "🔄 Статус", "callback_data": "status"},
+                {"text": "🧾 Продажи", "callback_data": "sales_status"},
             ],
-            [
-                {"text": "📋 Готовые токены", "callback_data": "ready_tokens"},
-                {"text": "🔄 Статус системы", "callback_data": "status"}
-            ],
-            [
-                {"text": "👥 Продавцы", "callback_data": "sellers_stats"},
-                {"text": "🌐 Dashboard URL", "callback_data": "dashboard_url"}
-            ],
-            [
-                {"text": "🧾 Продажа", "callback_data": "sales_status"}
-            ]
         ]
-        
-        # Добавляем кнопку Mini App ТОЛЬКО если есть HTTPS URL
-        # Если miniapp_url не передан, получаем его от Cloudflare
-        if not miniapp_url:
-            try:
-                from modules.cloudflare_helper import CloudflareHelper
-                cf = CloudflareHelper()
-                tunnel_url = cf.get_public_url()
-                
-                # ВАЖНО: только если URL начинается с https://
-                if tunnel_url and tunnel_url.startswith('https://'):
-                    miniapp_url = f"{tunnel_url}/miniapp"
-                else:
-                    miniapp_url = None
-            except Exception as e:
-                logger.debug(f"Cloudflare не доступен: {e}")
-                miniapp_url = None
-        
-        # Добавляем кнопку Mini App только если есть валидный HTTPS URL
-        if miniapp_url and miniapp_url.startswith('https://'):
-            keyboard_buttons.append([
-                {"text": "🚀 Открыть Dashboard", "web_app": {"url": miniapp_url}}
-            ])
-        
+
         keyboard = {"inline_keyboard": keyboard_buttons}
-        
-        text = (
-            "🤖 <b>Discord Token Manager</b>\n\n"
-            "Выберите действие:"
-        )
-        
-        # Если есть message_id - редактируем, иначе отправляем новое
+
+        text = "🤖 <b>Discord Token Manager</b>\n\nВыберите действие:"
+
         if message_id:
             success = self.edit_message(message_id, text, reply_markup=keyboard, chat_id=chat_id)
             if success:
@@ -484,63 +446,81 @@ class TelegramBot:
         return result is not None
 
     def send_sales_status(self, summary: Dict, chat_id: str = None, message_id: int = None) -> bool:
-        """Отправляет статус локальной очереди продаж."""
+        """Отправляет статус продаж."""
         if not summary.get("enabled"):
-            text = (
-                "🧾 <b>Продажа</b>\n\n"
-                "⚠️ Модуль продаж выключен в config.json.\n\n"
-                "Готовые токены сейчас отправляются обычным файлом."
-            )
+            text = "🧾 <b>Продажи</b>\n\n⚠️ Модуль продаж выключен."
             keyboard = {"inline_keyboard": [[{"text": "◀️ Назад", "callback_data": "menu"}]]}
         else:
+            active = summary.get("active", 0)
+            completed = summary.get("completed", 0)
+            failed = summary.get("failed", 0)
+            canceled = summary.get("canceled", 0)
+
             text = (
-                "🧾 <b>Продажа</b>\n\n"
-                f"Провайдер: <b>{summary.get('provider', 'local')}</b>\n"
-                f"Режим: <b>{summary.get('mode', 'local_queue')}</b>\n\n"
-                f"⏳ Ожидают: <b>{summary.get('pending', 0)}</b> заявок / "
-                f"<b>{summary.get('items_pending', 0)}</b> позиций\n"
-                f"🚀 Отправлено API: <b>{summary.get('submitted', 0)}</b>\n"
-                f"⚠️ Submit ошибок: <b>{summary.get('submit_failed', 0)}</b>\n"
-                f"✅ Продано: <b>{summary.get('sold', 0)}</b> заявок / "
-                f"<b>{summary.get('items_sold', 0)}</b> позиций\n"
-                f"↩️ Отменено: <b>{summary.get('canceled', 0)}</b>\n\n"
+                "🧾 <b>Продажи</b>\n\n"
+                f"🔄 В работе: <b>{active}</b>\n"
+                f"✅ Завершено: <b>{completed}</b>\n"
             )
+            if failed:
+                text += f"❌ Ошибки: <b>{failed}</b>\n"
+            if canceled:
+                text += f"↩️ Отменено: <b>{canceled}</b>\n"
 
-            recent = summary.get("recent_submissions", [])
-            active = [
-                item for item in recent
-                if str(item.get("status", "")).upper() not in {"SOLD", "CANCELED", "COMPLETED"}
-            ]
-
+            recent = summary.get("recent", [])
             if recent:
-                text += "<b>Последние заявки:</b>\n"
-                for item in recent[:5]:
-                    sid = item.get("submission_id", "unknown")
-                    short_id = sid[-8:] if len(sid) > 8 else sid
-                    workflow = item.get("workflow") or {}
+                text += "\n<b>Последние:</b>\n"
+                for item in recent:
+                    sid = item.get("submission_id", "?")
+                    short_id = sid.split("-")[-1] if "-" in sid else sid[-8:]
+                    status = item.get("status", "?")
+                    count = item.get("accepted_count", 0)
+
+                    wf = item.get("workflow") or {}
+                    stage = wf.get("stage", "")
+
+                    status_emoji = {
+                        "PENDING": "⏳",
+                        "TSKUPKA_PRICE_PENDING": "💰",
+                        "TOKENBUYROBOT_PRICE_PENDING": "💰",
+                        "TOKENBUYROBOT_COMPLETION_PENDING": "⏳",
+                        "COMPLETED": "✅",
+                        "WORKFLOW_FAILED": "❌",
+                        "CANCELED": "↩️",
+                    }.get(status, "❓")
+
                     prices = []
-                    if workflow.get("tskupka_price") is not None:
-                        prices.append(f"tsk {workflow['tskupka_price']}")
-                    if workflow.get("tokenbuyrobot_price") is not None:
-                        prices.append(f"tbr {workflow['tokenbuyrobot_price']}")
-                    price_text = f" | {' / '.join(prices)}" if prices else ""
-                    text += (
-                        f"• <code>{short_id}</code> "
-                        f"{item.get('status', 'UNKNOWN')} | "
-                        f"{item.get('accepted_count', 0)} шт. | "
-                        f"{float(item.get('total_price') or 0):.0f} ₽"
-                        f"{price_text}\n"
-                    )
-            else:
-                text += "Пока нет заявок."
+                    if wf.get("tskupka_price") is not None:
+                        prices.append(f"tsk: {wf['tskupka_price']}")
+                    if wf.get("tokenbuyrobot_price") is not None:
+                        prices.append(f"tbr: {wf['tokenbuyrobot_price']}")
+                    price_str = " | ".join(prices)
+
+                    status_label = {
+                        "PENDING": "подготовка",
+                        "TSKUPKA_PRICE_PENDING": "ждём цену tskupka",
+                        "TOKENBUYROBOT_PRICE_PENDING": "ждём цену tbr",
+                        "TOKENBUYROBOT_COMPLETION_PENDING": "ждём tbr",
+                        "COMPLETED": "завершена",
+                        "WORKFLOW_FAILED": "ошибка",
+                        "CANCELED": "отменена",
+                    }.get(status, status)
+
+                    text += f"{status_emoji} <code>{short_id}</code> {count} шт. — {status_label}"
+                    if price_str:
+                        text += f"\n     {price_str}"
+                    text += "\n"
 
             keyboard_rows = []
-            for item in active[:3]:
+            # Кнопка отмены для активных заявок
+            active_subs = [
+                s for s in recent
+                if str(s.get("status", "")).upper() not in {"COMPLETED", "CANCELED", "WORKFLOW_FAILED"}
+            ]
+            for item in active_subs[:2]:
                 sid = item.get("submission_id")
-                short_id = sid[-8:] if sid and len(sid) > 8 else sid
+                short_id = sid.split("-")[-1] if sid and "-" in sid else (sid or "?")[-8:]
                 keyboard_rows.append([
-                    {"text": f"✅ Продано {short_id}", "callback_data": f"sales_done:{sid}"},
-                    {"text": f"↩️ Отмена {short_id}", "callback_data": f"sales_cancel:{sid}"},
+                    {"text": f"↩️ Отменить {short_id}", "callback_data": f"sales_cancel:{sid}"},
                 ])
 
             keyboard_rows.append([{"text": "🔄 Обновить", "callback_data": "sales_status"}])
@@ -558,7 +538,7 @@ class TelegramBot:
         emoji = "✅" if success else "❌"
         keyboard = {
             "inline_keyboard": [
-                [{"text": "🧾 К продаже", "callback_data": "sales_status"}],
+                [{"text": "🧾 К продажам", "callback_data": "sales_status"}],
                 [{"text": "◀️ В меню", "callback_data": "menu"}],
             ]
         }
@@ -729,41 +709,17 @@ class TelegramBot:
             # Отвечаем на callback query
             self.answer_callback_query(callback_id)
             
-            # Отмена режима загрузки токенов
             if callback_data == 'upload_cancel':
                 self.cancel_upload(user_chat_id)
-                miniapp_url = None
-                try:
-                    from modules.cloudflare_helper import CloudflareHelper
-                    cf = CloudflareHelper()
-                    tunnel_url = cf.get_public_url()
-                    if tunnel_url and tunnel_url.startswith('https://'):
-                        miniapp_url = f"{tunnel_url}/miniapp"
-                except Exception as e:
-                    logger.debug(f"Cloudflare не доступен: {e}")
-                self.send_main_menu(chat_id=user_chat_id, message_id=message_id, miniapp_url=miniapp_url)
+                self.send_main_menu(chat_id=user_chat_id, message_id=message_id)
                 return
 
-            # Запрос ручной загрузки токенов
             if callback_data == 'upload_tokens':
                 self.send_upload_prompt(chat_id=user_chat_id, message_id=message_id)
                 return
 
-            # Специальная обработка кнопки "menu" (Назад)
             if callback_data == 'menu':
-                # Получаем актуальный miniapp_url от Cloudflare
-                miniapp_url = None
-                
-                try:
-                    from modules.cloudflare_helper import CloudflareHelper
-                    cf = CloudflareHelper()
-                    tunnel_url = cf.get_public_url()
-                    if tunnel_url and tunnel_url.startswith('https://'):
-                        miniapp_url = f"{tunnel_url}/miniapp"
-                except Exception as e:
-                    logger.debug(f"Cloudflare не доступен: {e}")
-                
-                self.send_main_menu(chat_id=user_chat_id, message_id=message_id, miniapp_url=miniapp_url)
+                self.send_main_menu(chat_id=user_chat_id, message_id=message_id)
                 return
             
             command = callback_data
@@ -846,19 +802,7 @@ class TelegramBot:
                     return
 
                 if command == 'start' or command == 'menu':
-                    # Получаем актуальный miniapp_url от Cloudflare
-                    miniapp_url = None
-                    
-                    try:
-                        from modules.cloudflare_helper import CloudflareHelper
-                        cf = CloudflareHelper()
-                        tunnel_url = cf.get_public_url()
-                        if tunnel_url and tunnel_url.startswith('https://'):
-                            miniapp_url = f"{tunnel_url}/miniapp"
-                    except Exception as e:
-                        logger.debug(f"Cloudflare не доступен: {e}")
-                    
-                    self.send_main_menu(chat_id=user_chat_id, miniapp_url=miniapp_url)
+                    self.send_main_menu(chat_id=user_chat_id)
                 elif command in self.command_handlers:
                     try:
                         self._dispatch_command_handler(command, user_chat_id, None, payload)

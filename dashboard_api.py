@@ -217,52 +217,16 @@ def get_sales_summary():
 
 @app.route('/api/sales/submissions')
 def get_sales_submissions():
-    """Получить локальные заявки продажи"""
+    """Получить последние заявки продажи"""
     try:
         if not pipeline or not pipeline.sales:
             return jsonify({'error': 'Sales module not initialized'}), 500
 
-        limit = request.args.get('limit', 50, type=int)
-        status = request.args.get('status')
-        return jsonify(pipeline.sales.list_submissions(limit=limit, status=status))
+        limit = request.args.get('limit', 10, type=int)
+        summary = pipeline.sales.get_summary(limit=limit)
+        return jsonify(summary.get('recent', []))
     except Exception as e:
         logger.error(f"Error getting sales submissions: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/sales/submissions/<submission_id>/sold', methods=['POST'])
-def mark_sales_submission_sold(submission_id):
-    """Пометить локальную sales-заявку как проданную"""
-    try:
-        if not pipeline or not pipeline.sales:
-            return jsonify({'error': 'Sales module not initialized'}), 500
-
-        result = pipeline.sales.mark_sold(submission_id)
-        if not result.get('ok'):
-            return jsonify({'success': False, 'error': result.get('error')}), 400
-
-        updated = _set_submission_items_status(result['submission'], 'sent')
-        db.update_statistics(tokens_sent=updated)
-        return jsonify({'success': True, 'updated': updated, 'submission': result['submission']})
-    except Exception as e:
-        logger.error(f"Error marking sales submission sold: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/sales/submissions/<submission_id>/submit', methods=['POST'])
-def submit_sales_submission(submission_id):
-    """Повторно отправить локальную sales-заявку во внешний API"""
-    try:
-        if not pipeline or not pipeline.sales:
-            return jsonify({'error': 'Sales module not initialized'}), 500
-
-        result = pipeline.sales.submit_submission(submission_id)
-        if not result.get('ok'):
-            return jsonify({'success': False, 'error': result.get('error'), 'submission': result.get('submission')}), 400
-
-        return jsonify({'success': True, 'submission': result['submission']})
-    except Exception as e:
-        logger.error(f"Error submitting sales submission: {e}")
         return jsonify({'error': str(e)}), 500
 
 

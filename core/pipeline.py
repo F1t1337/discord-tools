@@ -97,15 +97,9 @@ class TokenPipeline:
         self.telegram.register_command_handler('stats', self._handle_stats_command)
         self.telegram.register_command_handler('balance', self._handle_balance_command)
         self.telegram.register_command_handler('send_tokens', self._handle_send_tokens_command)
-        self.telegram.register_command_handler('ready_tokens', self._handle_ready_tokens_command)
         self.telegram.register_command_handler('status', self._handle_status_command)
-        self.telegram.register_command_handler('dashboard_url', self._handle_dashboard_url_command)
-        self.telegram.register_command_handler('check_valid', self._handle_check_valid_command)
-        self.telegram.register_command_handler('run_checker', self._handle_run_checker_command)
-        self.telegram.register_command_handler('sellers_stats', self._handle_sellers_stats_command)
         self.telegram.register_command_handler('upload_tokens', self._handle_upload_tokens_command)
         self.telegram.register_command_handler('sales_status', self._handle_sales_status_command)
-        self.telegram.register_command_handler('sales_done', self._handle_sales_done_command)
         self.telegram.register_command_handler('sales_cancel', self._handle_sales_cancel_command)
         self.telegram.register_token_upload_handler(self._handle_tokens_uploaded)
 
@@ -212,48 +206,6 @@ class TokenPipeline:
             logger.error(f"❌ Ошибка получения статуса продаж: {e}")
             self.telegram.send_error("Sales Status", str(e))
 
-    def _handle_sales_done_command(self, chat_id: str = None, message_id: int = None, payload: str = None):
-        """Помечает локальную sales-заявку как проданную."""
-        try:
-            if not payload:
-                self.telegram.send_sale_action_result(
-                    "Не указана заявка",
-                    "Нужно выбрать заявку из меню продаж.",
-                    success=False,
-                    chat_id=chat_id,
-                    message_id=message_id,
-                )
-                return
-
-            result = self.sales.mark_sold(payload)
-            if not result.get('ok'):
-                self.telegram.send_sale_action_result(
-                    "Не удалось закрыть заявку",
-                    result.get('error', 'Неизвестная ошибка'),
-                    success=False,
-                    chat_id=chat_id,
-                    message_id=message_id,
-                )
-                return
-
-            submission = result['submission']
-            updated = self._set_submission_items_status(submission, 'sent')
-            self.db.update_statistics(tokens_sent=updated)
-
-            self.telegram.send_sale_action_result(
-                "Заявка продана",
-                (
-                    f"<code>{payload}</code>\n\n"
-                    f"Позиций закрыто: <b>{updated}</b>."
-                ),
-                success=True,
-                chat_id=chat_id,
-                message_id=message_id,
-            )
-        except Exception as e:
-            logger.error(f"❌ Ошибка закрытия sales-заявки: {e}")
-            self.telegram.send_error("Sales Done", str(e))
-
     def _handle_sales_cancel_command(self, chat_id: str = None, message_id: int = None, payload: str = None):
         """Отменяет локальную sales-заявку и возвращает позиции в ready."""
         try:
@@ -326,175 +278,88 @@ class TokenPipeline:
             self.telegram.send_error("Balance", str(e))
     
     def _handle_send_tokens_command(self, chat_id: str = None, message_id: int = None):
-        """
-        Обработчик команды отправки токенов
-        
-        ОБНОВЛЕНО: Убрано ограничение на минимальное количество токенов
-        Теперь можно отправить даже 1 токен
-        """
+        """Продажа готовых токенов через tskupka + tokenbuyrobot workflow."""
         try:
-            logger.info("📤 [Command] Начало обработки команды send_tokens")
-            
-            # Получаем все готовые токены
-            ready_tokens = self.db.get_ready_tokens(limit=1000)  # Берем все готовые
-            
+            ready_tokens = self.db.get_ready_tokens(limit=1000)
+
             if not ready_tokens:
                 self.telegram.send_notification(
                     title="⚠️ Нет готовых токенов",
-                    message="В данный момент нет готовых токенов для отправки.\n\nПроверьте статус системы.",
+                    message="Нет токенов для продажи.",
                     level="WARNING",
-                    chat_id=chat_id
+                    chat_id=chat_id,
                 )
                 return
-            
-            logger.info(f"📦 [Command] Найдено готовых токенов: {len(ready_tokens)}")
-            
-            # Проверяем каждый токен на валидность
-            valid_tokens = []
-            valid_token_records = []
-            invalid_tokens = []
-            
+
             self.telegram.send_notification(
-                title="Проверка токенов",
-                message=f"Проверяю {len(ready_tokens)} токенов на валидность...",
+                title="🔍 Проверка",
+                message=f"Проверяю {len(ready_tokens)} токенов...",
                 level="INFO",
-                chat_id=chat_id
+                chat_id=chat_id,
             )
-            
+
+            valid_tokens = []
+            valid_records = []
+            invalid_count = 0
+
             for token_data in ready_tokens:
                 token = token_data['token']
-                
-                # Валидируем
                 is_valid, username = self.validator.validate_token(token)
-                
+
                 if is_valid:
                     valid_tokens.append(token)
-                    valid_token_records.append(token_data)
-                    logger.info(f"✅ [Command] Токен валиден: {username}")
+                    valid_records.append(token_data)
                 else:
-                    invalid_tokens.append(token)
-                    logger.warning(f"❌ [Command] Токен невалиден, будет удален")
-                    
-                    # Помечаем как invalid в БД
-                    self.db.update_token_status(
-                        token=token,
-                        status='invalid',
-                        error='Failed validation before send'
-                    )
-                
-                # Небольшая задержка между проверками
+                    invalid_count += 1
+                    self.db.update_token_status(token=token, status='invalid',
+                                                error='Failed validation before send')
                 time.sleep(0.5)
-            
-            logger.info(f"📊 [Command] Результат проверки: {len(valid_tokens)} валидных, {len(invalid_tokens)} невалидных")
-            
-            # ОБНОВЛЕНО: Убрана проверка минимального количества
-            if len(valid_tokens) == 0:
+
+            if not valid_tokens:
                 self.telegram.send_notification(
                     title="❌ Нет валидных токенов",
-                    message=f"Все токены ({len(invalid_tokens)}) оказались невалидными.\n\nОни были удалены из базы.",
+                    message=f"Все {invalid_count} токенов невалидны.",
                     level="ERROR",
-                    chat_id=chat_id
+                    chat_id=chat_id,
                 )
                 return
-            
-            logger.info(f"📤 [Command] Отправка {len(valid_tokens)} токенов...")
 
-            # Если включена sales-инфраструктура, создаем только локальную
-            # черновую заявку из метаданных. Сами токены наружу не передаются.
-            if self.sales.enabled:
-                result = self.sales.create_submission(
-                    valid_token_records,
-                    source="send_tokens_command"
+            if not self.sales.enabled:
+                self.telegram.send_notification(
+                    title="⚠️ Продажи выключены",
+                    message="Включите модуль продаж в config.json.",
+                    level="WARNING",
+                    chat_id=chat_id,
                 )
-
-                if result.get('ok'):
-                    for token in valid_tokens:
-                        self.db.update_token_status(
-                            token=token,
-                            status='sale_pending'
-                        )
-
-                    self.ready_tokens_notification_sent = False
-                    if result.get('workflow_enabled'):
-                        self._start_sales_workflow(result['submission_id'], chat_id)
-                        submit_text = (
-                            "Workflow запущен: tskupka → tokenbuyrobot → completion.\n"
-                            "Цены и статусы будут приходить отдельными уведомлениями.\n"
-                        )
-                        level = "SUCCESS"
-                    else:
-                        external = result.get('external_submit') or {}
-                        if not external:
-                            submit_text = "Локальная заявка сохранена, внешний API не вызывался.\n"
-                            level = "SUCCESS"
-                        elif external.get('ok'):
-                            submit_text = (
-                                "🚀 Submit: <b>успешно отправлено во внешний API</b>\n"
-                                f"HTTP: <b>{external.get('status_code')}</b>\n"
-                            )
-                            level = "SUCCESS"
-                        else:
-                            submit_text = (
-                                "⚠️ Submit: <b>ошибка отправки во внешний API</b>\n"
-                                f"Причина: <code>{external.get('error') or 'unknown'}</code>\n"
-                            )
-                            level = "WARNING"
-
-                    self.telegram.send_notification(
-                        title="🧾 Заявка подготовлена",
-                        message=(
-                            f"Создана sales-заявка "
-                            f"<b>{result['submission_id']}</b>.\n\n"
-                            f"Провайдер: <b>{result['provider']}</b>\n"
-                            f"Позиций: <b>{result['accepted_count']}</b>\n"
-                            f"Статус: <b>{result.get('status')}</b>\n"
-                            f"{submit_text}\n"
-                            f"В payload нет токенов/секретов.\n\n"
-                            f"Outbox: <code>{result['outbox_path']}</code>"
-                        ),
-                        level=level,
-                        chat_id=chat_id
-                    )
-                    logger.info(
-                        f"🧾 [Command] Локальная sales-заявка создана: {result['submission_id']}"
-                    )
-                    return
-
-                self.telegram.send_error("Sales", result.get('error', 'Не удалось создать заявку'))
                 return
-            
-            # Отправляем ВСЕ токены одним файлом
-            success = self.telegram.send_tokens_file(valid_tokens, chat_id=chat_id)
-            
-            if success:
-                sent_tokens = valid_tokens
-                # Помечаем отправленные токены как 'sent'
-                for token in sent_tokens:
-                    self.db.update_token_status(
-                        token=token,
-                        status='sent'
-                    )
-                
-                # Обновляем статистику
-                self.db.update_statistics(tokens_sent=len(sent_tokens))
-                
-                # Отправляем уведомление об успехе
-                self.telegram.send_tokens_sent_notification(
-                    count=len(sent_tokens),
-                    invalid_count=len(invalid_tokens),
-                    chat_id=chat_id
-                )
-                
-                # ВАЖНО: Сбрасываем флаг уведомлений после отправки
-                self.ready_tokens_notification_sent = False
-                logger.info("🔄 [Command] Флаг уведомлений сброшен после отправки токенов")
-                
-                logger.info(f"✅ [Command] Токены успешно отправлены: {len(sent_tokens)}")
-            else:
-                self.telegram.send_error("Send Tokens", "Не удалось отправить файл с токенами")
-                
+
+            result = self.sales.create_submission(valid_records)
+            if not result.get('ok'):
+                self.telegram.send_error("Sales", result.get('error', 'Ошибка'))
+                return
+
+            for token in valid_tokens:
+                self.db.update_token_status(token=token, status='sale_pending')
+            self.ready_tokens_notification_sent = False
+
+            submission_id = result['submission_id']
+            msg = (
+                f"✅ <b>{result['accepted_count']}</b> токенов"
+            )
+            if invalid_count:
+                msg += f" (❌ {invalid_count} невалидных убрано)"
+            msg += "\n\nWorkflow: tskupka → tokenbuyrobot → завершение"
+
+            self.telegram.send_notification(
+                title="🧾 Заявка создана",
+                message=msg,
+                level="SUCCESS",
+                chat_id=chat_id,
+            )
+            self._start_sales_workflow(submission_id, chat_id)
+
         except Exception as e:
-            logger.error(f"❌ [Command] Ошибка отправки токенов: {e}")
+            logger.error(f"❌ Ошибка продажи токенов: {e}")
             self.telegram.send_error("Send Tokens", str(e))
 
     def _start_sales_workflow(self, submission_id: str, chat_id: str = None):
@@ -517,7 +382,7 @@ class TokenPipeline:
                 chat_id=chat_id,
             )
 
-        result = self.sales.run_price_workflow(submission_id, notify_callback=notify)
+        result = self.sales.run_workflow(submission_id, notify_callback=notify)
         if result.get('ok'):
             submission = result.get('submission') or {}
             updated = self._set_submission_items_status(submission, 'sent')
