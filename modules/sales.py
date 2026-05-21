@@ -91,6 +91,7 @@ class SalesManager:
         self.submit_endpoint_override = config.get("submit_endpoint")
         self.auth_header_override = config.get("auth_header")
         self.auth_scheme_override = config.get("auth_scheme")
+        self.submit_file_field = config.get("submit_file_field", "submit")
         self.provider_overrides = config.get("providers", {})
         self.workflow_config = config.get("workflow", {})
         self.price_initial_delay = float(self.workflow_config.get("price_initial_delay", 10))
@@ -754,9 +755,10 @@ class SalesManager:
             return {"ok": False, "error": str(e), "data": None}
 
         data = self._safe_json(response)
+        ok = 200 <= response.status_code < 300
         return {
-            "ok": 200 <= response.status_code < 300,
-            "error": None if 200 <= response.status_code < 300 else f"Provider HTTP {response.status_code}",
+            "ok": ok,
+            "error": None if ok else self._response_error(response, data),
             "status_code": response.status_code,
             "data": data,
         }
@@ -779,11 +781,13 @@ class SalesManager:
         except requests.RequestException as e:
             return {"ok": False, "error": str(e)}
 
+        data = self._safe_json(response)
+        ok = 200 <= response.status_code < 300
         return {
-            "ok": 200 <= response.status_code < 300,
-            "error": None if 200 <= response.status_code < 300 else f"Provider HTTP {response.status_code}",
+            "ok": ok,
+            "error": None if ok else self._response_error(response, data),
             "status_code": response.status_code,
-            "data": self._safe_json(response),
+            "data": data,
         }
 
     def _update_submission_fields(self, submission_id: str, fields: Dict) -> Optional[Dict]:
@@ -837,10 +841,20 @@ class SalesManager:
                 ),
             }
 
-        payload = self._build_submit_payload(submission, provider=provider, extra=extra_payload)
-        unsafe_path = self._find_sensitive_key(payload)
-        if unsafe_path:
-            error = f"Sensitive field blocked in submit payload: {unsafe_path}"
+        submit_text = self._build_submit_text(submission)
+        if not submit_text:
+            error = "No db_id values available for submit text payload"
+            return {
+                "ok": False,
+                "error": error,
+                "submission_updates": self._external_submit_updates(
+                    status=self.SUBMIT_FAILED_STATUS,
+                    error=error,
+                ),
+            }
+        unsafe_text = self._find_sensitive_text(submit_text)
+        if unsafe_text:
+            error = "Sensitive value blocked in submit text payload"
             return {
                 "ok": False,
                 "error": error,
@@ -864,10 +878,18 @@ class SalesManager:
             }
 
         try:
+            filename = f"{submission.get('submission_id') or 'submission'}.txt"
+            files = {
+                self._submit_file_field(provider): (
+                    filename,
+                    submit_text.encode("utf-8"),
+                    "text/plain",
+                )
+            }
             response = requests.post(
                 url,
-                json=payload,
-                headers=self._submit_headers(provider),
+                files=files,
+                headers=self._submit_headers(provider, include_content_type=False),
                 timeout=self.timeout,
             )
         except requests.RequestException as e:
@@ -892,7 +914,7 @@ class SalesManager:
                 response_data = None
 
         ok = 200 <= response.status_code < 300
-        error = None if ok else f"Provider HTTP {response.status_code}"
+        error = None if ok else self._response_error(response, response_data)
         return {
             "ok": ok,
             "error": error,
@@ -905,27 +927,22 @@ class SalesManager:
                 status_code=response.status_code,
                 provider_submission_id=provider_submission_id,
                 response_data=response_data,
+                request_format="multipart_txt_db_id",
+                request_line_count=len([line for line in submit_text.splitlines() if line.strip()]),
             ),
         }
 
-    def _build_submit_payload(self, submission: Dict, provider: str = None,
-                              extra: Dict = None) -> Dict:
-        payload = {
-            "submission_id": submission.get("submission_id"),
-            "source": submission.get("source"),
-            "created_at": submission.get("created_at"),
-            "provider": provider or submission.get("provider"),
-            "accepted_count": submission.get("accepted_count", 0),
-            "total_price": submission.get("total_price", 0),
-            "items": submission.get("items", []),
-            "metadata": {
-                "schema": "discord-tools.sales.v1",
-                "contains_credentials": False,
-            },
-        }
-        if extra:
-            payload["workflow_context"] = extra
-        return payload
+    def _build_submit_text(self, submission: Dict) -> str:
+        lines = []
+        for item in submission.get("items", []):
+            db_id = item.get("db_id")
+            if db_id is not None and str(db_id).strip():
+                lines.append(str(db_id).strip())
+        return "\n".join(lines)
+
+    def _submit_file_field(self, provider: str) -> str:
+        info = self._provider_info(provider)
+        return info.get("submit_file_field") or self.submit_file_field
 
     def _submit_url(self, provider: str) -> str:
         return self._provider_url(provider, "submit_endpoint")
@@ -942,14 +959,13 @@ class SalesManager:
         endpoint = endpoint.replace("{task_id}", str(provider_submission_id or ""))
         return f"{base_url}/{endpoint.lstrip('/')}"
 
-    def _submit_headers(self, provider: str) -> Dict[str, str]:
+    def _submit_headers(self, provider: str, include_content_type: bool = True) -> Dict[str, str]:
         info = self._provider_info(provider)
         auth = info.get("auth", "Authorization: Bearer")
         api_key = self._provider_api_key(provider)
-        headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        }
+        headers = {"Accept": "application/json"}
+        if include_content_type:
+            headers["Content-Type"] = "application/json"
 
         if auth == "X-API-Key":
             headers["X-API-Key"] = api_key
@@ -1003,6 +1019,38 @@ class SalesManager:
         except ValueError:
             return None
 
+    def _response_error(self, response, response_data=None) -> str:
+        base = f"Provider HTTP {response.status_code}"
+        preview = self._response_preview(response, response_data)
+        return f"{base}: {preview}" if preview else base
+
+    def _response_preview(self, response, response_data=None) -> Optional[str]:
+        if response_data is not None:
+            try:
+                text = json.dumps(self._redact_sensitive(response_data), ensure_ascii=False)
+            except (TypeError, ValueError):
+                text = str(response_data)
+        else:
+            text = getattr(response, "text", "") or ""
+
+        text = " ".join(str(text).split())
+        if not text:
+            return None
+        return text[:300]
+
+    def _redact_sensitive(self, value):
+        if isinstance(value, dict):
+            redacted = {}
+            for key, nested in value.items():
+                if str(key).lower() in self.SENSITIVE_KEYS:
+                    redacted[key] = "***"
+                else:
+                    redacted[key] = self._redact_sensitive(nested)
+            return redacted
+        if isinstance(value, list):
+            return [self._redact_sensitive(item) for item in value]
+        return value
+
     def _external_submit_updates(
         self,
         status: str,
@@ -1011,6 +1059,8 @@ class SalesManager:
         status_code: int = None,
         provider_submission_id: str = None,
         response_data: Dict = None,
+        request_format: str = None,
+        request_line_count: int = None,
     ) -> Dict:
         external = {
             "ok": status == self.SUBMITTED_STATUS,
@@ -1023,6 +1073,10 @@ class SalesManager:
             external["url"] = url
         if response_data is not None:
             external["response_keys"] = sorted(response_data.keys()) if isinstance(response_data, dict) else []
+        if request_format:
+            external["request_format"] = request_format
+        if request_line_count is not None:
+            external["request_line_count"] = request_line_count
 
         return {
             "status": status,
@@ -1058,6 +1112,11 @@ class SalesManager:
                 if found:
                     return found
         return None
+
+    def _find_sensitive_text(self, value: str) -> bool:
+        if not value:
+            return False
+        return any(marker in value.lower() for marker in self.SENSITIVE_KEYS)
 
     def _extract_price(self, value):
         if isinstance(value, dict):

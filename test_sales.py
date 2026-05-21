@@ -41,6 +41,7 @@ def test_create_submission_never_writes_tokens():
 
         submission = json.loads(raw)
         assert submission["external_submit_blocked"] is True
+        assert submission["items"][0]["db_id"] == 1
         assert submission["items"][0]["username"] == "user"
         assert "token" not in submission["items"][0]
 
@@ -99,7 +100,7 @@ def test_submission_can_be_sold_once():
         assert sold_again["submission"]["status"] == "SOLD"
 
 
-def test_external_submit_sends_only_safe_payload():
+def test_external_submit_sends_db_ids_as_txt_file():
     class FakeResponse:
         status_code = 201
         content = b'{"id": "provider-1"}'
@@ -132,18 +133,22 @@ def test_external_submit_sends_only_safe_payload():
             assert result["status"] == "SUBMITTED"
             assert result["external_submit"]["ok"] is True
 
-            payload = post.call_args.kwargs["json"]
+            files = post.call_args.kwargs["files"]
             headers = post.call_args.kwargs["headers"]
 
             assert post.call_args.args[0] == "https://example.test/submit"
             assert headers["X-API-Key"] == "api-secret"
-            assert payload["metadata"]["contains_credentials"] is False
-            assert "SECRET_DISCORD_TOKEN" not in json.dumps(payload)
-            assert "token" not in payload["items"][0]
+            assert "Content-Type" not in headers
+            assert "data" not in post.call_args.kwargs
+            assert files["submit"][0].endswith(".txt")
+            assert files["submit"][1].decode("utf-8") == "1"
+            assert "SECRET_DISCORD_TOKEN" not in files["submit"][1].decode("utf-8")
 
             submission = manager.get_submission(result["submission_id"])
             assert submission["status"] == "SUBMITTED"
             assert submission["external_submit"]["provider_submission_id"] == "provider-1"
+            assert submission["external_submit"]["request_format"] == "multipart_txt_db_id"
+            assert submission["external_submit"]["request_line_count"] == 1
 
 
 def test_price_workflow_runs_provider_sequence():
@@ -214,3 +219,7 @@ def test_price_workflow_runs_provider_sequence():
         assert submission["workflow"]["tokenbuyrobot_price"] == 120
         assert post.call_count == 4
         assert get.call_count == 4
+        assert post.call_args_list[0].kwargs["files"]["submit"][1].decode("utf-8") == "1"
+        assert post.call_args_list[1].kwargs["files"]["submit"][1].decode("utf-8") == "1"
+        assert "json" not in post.call_args_list[0].kwargs
+        assert post.call_args_list[2].kwargs["json"]["accepted_price"] == 120
