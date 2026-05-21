@@ -569,14 +569,24 @@ class SalesManager:
         return None
 
     def _find_price(self, value):
-        """Ищет цену в ответе. Пропускает нулевые значения (amount_paid=0 и т.п.)."""
+        """Ищет цену в ответе. Приоритет final_ полям, пропускает нулевые."""
         if isinstance(value, dict):
+            # 1. Приоритет: final_total / final_payment / final_price (итоговая сумма)
+            for key in ("final_total", "final_payment", "final_price"):
+                if key in value:
+                    p = self._num(value[key])
+                    if p is not None and p > 0:
+                        return p
+
+            # 2. Общий поиск по ключевым словам
             for key, v in value.items():
                 kl = str(key).lower()
                 if any(w in kl for w in ("price", "amount", "cost", "payment")):
                     p = self._num(v)
                     if p is not None and p > 0:
                         return p
+
+            # 3. Рекурсия во вложенные объекты
             for v in value.values():
                 p = self._find_price(v)
                 if p is not None:
