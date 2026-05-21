@@ -296,17 +296,21 @@ class SalesManager:
             if not result.get("ok"):
                 raise RuntimeError(result.get("error") or f"{provider} status failed")
 
-            status = self._find_status(result.get("data"))
+            data = result.get("data")
+            logger.debug("📦 %s status response: %s", provider, data)
+
+            status = self._find_status(data)
             if self._is_failed(status):
                 raise RuntimeError(f"{provider} задача отклонена: {status}")
 
-            price = self._find_price(result.get("data"))
+            price = self._find_price(data)
             if price is not None and price > 0:
                 wf = (self.get_submission(submission_id) or {}).get("workflow", {})
                 wf[f"{provider}_price"] = price
                 self._update_fields(submission_id, {"workflow": wf})
                 return price
 
+            logger.info("⏳ %s poll: status=%s, price=%s", provider, status, price)
             if notify_cb:
                 notify_cb(
                     f"⏳ {provider}",
@@ -554,12 +558,13 @@ class SalesManager:
         return None
 
     def _find_price(self, value):
+        """Ищет цену в ответе. Пропускает нулевые значения (amount_paid=0 и т.п.)."""
         if isinstance(value, dict):
             for key, v in value.items():
                 kl = str(key).lower()
                 if any(w in kl for w in ("price", "amount", "cost", "payment")):
                     p = self._num(v)
-                    if p is not None:
+                    if p is not None and p > 0:
                         return p
             for v in value.values():
                 p = self._find_price(v)
