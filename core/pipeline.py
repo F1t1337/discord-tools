@@ -97,6 +97,7 @@ class TokenPipeline:
         self.sales = SalesManager(
             self.config.get('sales', {}),
             sheets_logger=self.sheets,
+            db=self.db,
         )
 
         logger.info("✅ Все модули инициализированы")

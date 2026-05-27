@@ -1,8 +1,5 @@
-import json
 import logging
 import os
-import tempfile
-import threading
 import time
 import uuid
 from datetime import datetime
@@ -67,14 +64,10 @@ class SalesManager:
         },
     }
 
-    def __init__(self, config: Dict = None, sheets_logger=None):
+    def __init__(self, config: Dict = None, sheets_logger=None, db=None):
         config = config or {}
         self.enabled = bool(config.get("enabled", False))
-        # Всегда используем абсолютный путь, чтобы os.replace работал на Windows
-        self.outbox_path = os.path.abspath(
-            config.get("outbox_path", "data/sales/submissions.jsonl")
-        )
-        self._file_lock = threading.Lock()   # защищаем файл от гонок
+        self.db = db                         # modules.database.Database
         self.timeout = float(config.get("timeout", 20))
         self.provider_overrides = config.get("providers", {})
         self.sheets_logger = sheets_logger  # GoogleSheetsLogger | None
@@ -107,7 +100,8 @@ class SalesManager:
             "workflow": {},
             "items": safe_items,
         }
-        self._append_submission(submission)
+        if self.db:
+            self.db.sale_create(submission)
         logger.info("🧾 Заявка создана: %s (%d шт.)", submission["submission_id"], len(safe_items))
         return {
             "ok": True,
@@ -139,17 +133,16 @@ class SalesManager:
             return self._fail(submission_id, str(e), notify_callback)
 
     def get_submission(self, submission_id: str) -> Optional[Dict]:
-        for s in self._read_submissions():
-            if s.get("submission_id") == submission_id:
-                return s
+        if self.db:
+            return self.db.sale_get(submission_id)
         return None
 
     def cancel_submission(self, submission_id: str) -> Dict:
         return self._set_status(submission_id, self.CANCELED_STATUS)
 
     def get_summary(self, limit: int = 5) -> Dict:
-        all_subs = self._read_submissions()
-        recent = self._newest_first(all_subs)[:limit]
+        all_subs = self.db.sale_get_all() if self.db else []
+        recent = all_subs[:limit]  # уже отсортированы по created_at DESC
 
         by_status: Dict[str, int] = {}
         for s in all_subs:
@@ -543,100 +536,24 @@ class SalesManager:
             return True
         return False
 
-    # ── storage ─────────────────────────────────────────────────
-
-    def _read_submissions_nolock(self) -> List[Dict]:
-        """Читает файл без захвата lock — вызывать только внутри критических секций."""
-        if not os.path.exists(self.outbox_path):
-            return []
-        subs = []
-        with open(self.outbox_path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    subs.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
-        return subs
-
-    def _read_submissions(self) -> List[Dict]:
-        with self._file_lock:
-            return self._read_submissions_nolock()
-
-    def _write_submissions(self, submissions: List[Dict]):
-        """Атомарная запись через temp-файл. Блокировка уже удерживается вызывающим кодом."""
-        outbox_dir = os.path.dirname(self.outbox_path)
-        if outbox_dir and not os.path.exists(outbox_dir):
-            os.makedirs(outbox_dir, exist_ok=True)
-        # Создаём temp-файл в той же директории → гарантируем один диск
-        fd, tmp = tempfile.mkstemp(
-            prefix=".sub-", suffix=".jsonl",
-            dir=outbox_dir or ".", text=True,
-        )
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                for s in submissions:
-                    f.write(json.dumps(s, ensure_ascii=False) + "\n")
-            # os.replace на Windows может упасть с WinError 5 если файл заблокирован;
-            # делаем несколько попыток с небольшой паузой
-            last_err = None
-            for attempt in range(5):
-                try:
-                    os.replace(tmp, self.outbox_path)
-                    tmp = None  # успешно, не удалять
-                    return
-                except PermissionError as e:
-                    last_err = e
-                    time.sleep(0.1 * (attempt + 1))
-            raise last_err
-        except Exception:
-            if tmp:
-                try:
-                    os.unlink(tmp)
-                except OSError:
-                    pass
-            raise
-
-    def _append_submission(self, submission: Dict):
-        outbox_dir = os.path.dirname(self.outbox_path)
-        if outbox_dir and not os.path.exists(outbox_dir):
-            os.makedirs(outbox_dir, exist_ok=True)
-        with self._file_lock:
-            with open(self.outbox_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(submission, ensure_ascii=False) + "\n")
+    # ── storage (SQLite) ────────────────────────────────────────
 
     def _update_fields(self, submission_id: str, fields: Dict) -> Optional[Dict]:
-        with self._file_lock:
-            subs = self._read_submissions_nolock()
-            target = None
-            for s in subs:
-                if s.get("submission_id") == submission_id:
-                    s.update(fields)
-                    s["updated_at"] = datetime.now().isoformat(timespec="seconds")
-                    target = s
-                    break
-            if target:
-                self._write_submissions(subs)
-            return target
+        if self.db:
+            return self.db.sale_update_fields(submission_id, fields)
+        return None
 
     def _set_status(self, submission_id: str, new_status: str) -> Dict:
         if not self.enabled:
             return {"ok": False, "error": "Sales disabled"}
-        with self._file_lock:
-            subs = self._read_submissions_nolock()
-            for s in subs:
-                if s.get("submission_id") != submission_id:
-                    continue
-                cur = str(s.get("status", "")).upper()
-                if cur in self.CLOSED_STATUSES:
-                    return {"ok": False, "error": f"Заявка уже закрыта ({cur})", "submission": s}
-                s["status"] = new_status
-                s["updated_at"] = datetime.now().isoformat(timespec="seconds")
-                self._write_submissions(subs)
-                return {"ok": True, "submission": s}
-        return {"ok": False, "error": "Заявка не найдена"}
+        s = self.get_submission(submission_id)
+        if not s:
+            return {"ok": False, "error": "Заявка не найдена"}
+        cur = str(s.get("status", "")).upper()
+        if cur in self.CLOSED_STATUSES:
+            return {"ok": False, "error": f"Заявка уже закрыта ({cur})", "submission": s}
+        updated = self._update_fields(submission_id, {"status": new_status})
+        return {"ok": True, "submission": updated}
 
     def _fail(self, submission_id, error, notify_cb=None):
         self._update_fields(submission_id, {
@@ -807,7 +724,3 @@ class SalesManager:
                 cb(title, msg, level)
         return n
 
-    def _newest_first(self, subs: List[Dict]) -> List[Dict]:
-        indexed = list(enumerate(subs))
-        indexed.sort(key=lambda p: (p[1].get("created_at", ""), p[0]), reverse=True)
-        return [s for _, s in indexed]

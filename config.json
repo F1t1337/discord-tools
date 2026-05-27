@@ -49,7 +49,6 @@
 
   "sales": {
     "enabled": true,
-    "outbox_path": "data/sales/submissions.jsonl",
     "timeout": 20,
     "providers": {
       "tskupka": {

@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import logging
 from typing import List, Dict, Optional
@@ -102,11 +103,30 @@ class Database:
                 )
             """)
             
+            # Таблица продаж
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS sales (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    submission_id TEXT NOT NULL UNIQUE,
+                    status TEXT NOT NULL DEFAULT 'PENDING',
+                    source TEXT DEFAULT 'telegram',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    accepted_count INTEGER DEFAULT 0,
+                    total_price REAL DEFAULT 0,
+                    workflow TEXT DEFAULT '{}',
+                    workflow_error TEXT,
+                    items TEXT DEFAULT '[]'
+                )
+            """)
+
             # Индексы для быстрого поиска
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_tokens_status ON tokens(status)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_tokens_created ON tokens(created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp)")
-            
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sales_submission ON sales(submission_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sales_created ON sales(created_at)")
+
             conn.commit()
     
     # ==================== РАБОТА С ТОКЕНАМИ ====================
@@ -620,6 +640,99 @@ class Database:
         except Exception as e:
             logger.error(f"❌ Ошибка получения продавца: {e}")
             return None
+
+
+    # ==================== ПРОДАЖИ ====================
+
+    def sale_create(self, submission: Dict) -> bool:
+        """Сохраняет новую заявку в БД."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT OR IGNORE INTO sales
+                    (submission_id, status, source, created_at, updated_at,
+                     accepted_count, total_price, workflow, items)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    submission["submission_id"],
+                    submission.get("status", "PENDING"),
+                    submission.get("source", "telegram"),
+                    submission.get("created_at", datetime.now().isoformat(timespec="seconds")),
+                    submission.get("updated_at", datetime.now().isoformat(timespec="seconds")),
+                    submission.get("accepted_count", 0),
+                    submission.get("total_price", 0),
+                    json.dumps(submission.get("workflow", {}), ensure_ascii=False),
+                    json.dumps(submission.get("items", []), ensure_ascii=False),
+                ))
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"❌ sale_create: {e}")
+            return False
+
+    def sale_update_fields(self, submission_id: str, fields: Dict) -> Optional[Dict]:
+        """Обновляет поля заявки. Допустимые поля: status, workflow, workflow_error."""
+        allowed = {"status", "workflow", "workflow_error"}
+        safe = {k: v for k, v in fields.items() if k in allowed}
+        if not safe:
+            return self.sale_get(submission_id)
+
+        set_clauses = []
+        values = []
+        for k, v in safe.items():
+            set_clauses.append(f"{k} = ?")
+            values.append(
+                json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v
+            )
+        set_clauses.append("updated_at = ?")
+        values.append(datetime.now().isoformat(timespec="seconds"))
+        values.append(submission_id)
+
+        try:
+            with self.get_connection() as conn:
+                conn.execute(
+                    f"UPDATE sales SET {', '.join(set_clauses)} WHERE submission_id = ?",
+                    values,
+                )
+        except Exception as e:
+            logger.error(f"❌ sale_update_fields: {e}")
+        return self.sale_get(submission_id)
+
+    def sale_get(self, submission_id: str) -> Optional[Dict]:
+        """Возвращает заявку по ID или None."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT * FROM sales WHERE submission_id = ?", (submission_id,)
+                )
+                row = cursor.fetchone()
+                return self._deserialize_sale(dict(row)) if row else None
+        except Exception as e:
+            logger.error(f"❌ sale_get: {e}")
+            return None
+
+    def sale_get_all(self) -> List[Dict]:
+        """Возвращает все заявки, новые первыми."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM sales ORDER BY created_at DESC")
+                return [self._deserialize_sale(dict(r)) for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"❌ sale_get_all: {e}")
+            return []
+
+    @staticmethod
+    def _deserialize_sale(row: Dict) -> Dict:
+        """Десериализует JSON-поля заявки."""
+        for field, default in (("workflow", {}), ("items", [])):
+            if field in row and isinstance(row[field], str):
+                try:
+                    row[field] = json.loads(row[field])
+                except (json.JSONDecodeError, TypeError):
+                    row[field] = default
+        return row
 
 
 if __name__ == "__main__":
