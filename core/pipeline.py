@@ -436,8 +436,9 @@ class TokenPipeline:
     def _reclean_tokens_sync(self, tokens: list) -> int:
         """
         Синхронно повторно очищает токены прямо в потоке воркфлоу.
-        Таймаут 5 минут на всю пачку — мёртвые токены не блокируют процесс.
-        Возвращает количество успешно завершённых очисток.
+        Мёртвые токены cleaner выбрасывает сам (safe_request с 3 попытками
+        по 10 сек каждая), так что внешний таймаут не нужен.
+        Возвращает количество обработанных токенов.
         """
         if not tokens:
             return 0
@@ -459,27 +460,16 @@ class TokenPipeline:
                 logger.warning("⚠️ [Reclean] Proxy недоступны: %s", e)
 
         max_workers = min(len(tokens), self.config.get('cleaner', {}).get('max_workers', 5))
-        # Таймаут из конфига (по умолчанию 15 минут).
-        # Нужен чтобы мёртвые токены не блокировали воркфлоу вечно.
-        timeout_secs = self.config.get('cleaner', {}).get('reclean_timeout', 900)
 
-        futures = {}
-        completed = 0
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            for token in tokens:
-                api = DiscordAPI(proxy_manager, tracker)
-                fut = executor.submit(process_token, api, token, tracker)
-                futures[fut] = token
+            futures = [
+                executor.submit(process_token, DiscordAPI(proxy_manager, tracker), token, tracker)
+                for token in tokens
+            ]
+            concurrent.futures.wait(futures)
 
-            done, not_done = concurrent.futures.wait(futures.keys(), timeout=timeout_secs)
-            completed = len(done)
-
-            for fut in not_done:
-                fut.cancel()
-                logger.warning("⚠️ [Reclean] Таймаут для токена %s...", futures[fut][:10])
-
-        logger.info("✅ [Reclean] Завершено %d/%d токенов", completed, len(tokens))
-        return completed
+        logger.info("✅ [Reclean] Обработано %d токенов", len(tokens))
+        return len(tokens)
     
     def _handle_check_valid_command(self, chat_id: str = None, message_id: int = None):
         """Проверка готовых токенов через обычный validator, удаляет невалидные"""
