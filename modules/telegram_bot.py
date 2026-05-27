@@ -120,10 +120,13 @@ class TelegramBot:
             ],
             [
                 {"text": "📦 Продать токены", "callback_data": "send_tokens"},
-                {"text": "📥 Загрузить токены", "callback_data": "upload_tokens"},
+                {"text": "📤 Выгрузить токены", "callback_data": "export_tokens"},
             ],
             [
+                {"text": "📥 Загрузить токены", "callback_data": "upload_tokens"},
                 {"text": "🔄 Статус", "callback_data": "status"},
+            ],
+            [
                 {"text": "🧾 Продажи", "callback_data": "sales_status"},
             ],
         ]

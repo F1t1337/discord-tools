@@ -97,6 +97,7 @@ class TokenPipeline:
         self.telegram.register_command_handler('stats', self._handle_stats_command)
         self.telegram.register_command_handler('balance', self._handle_balance_command)
         self.telegram.register_command_handler('send_tokens', self._handle_send_tokens_command)
+        self.telegram.register_command_handler('export_tokens', self._handle_export_tokens_command)
         self.telegram.register_command_handler('status', self._handle_status_command)
         self.telegram.register_command_handler('upload_tokens', self._handle_upload_tokens_command)
         self.telegram.register_command_handler('sales_status', self._handle_sales_status_command)
@@ -260,6 +261,27 @@ class TokenPipeline:
         return updated
 
     
+    def _handle_export_tokens_command(self, chat_id: str = None, message_id: int = None):
+        """Выгружает готовые токены в .txt файл без изменения статусов."""
+        try:
+            ready_tokens = self.db.get_ready_tokens(limit=1000)
+
+            if not ready_tokens:
+                self.telegram.send_notification(
+                    title="⚠️ Нет готовых токенов",
+                    message="Нет токенов для выгрузки.",
+                    level="WARNING",
+                    chat_id=chat_id,
+                )
+                return
+
+            tokens = [t['token'] for t in ready_tokens]
+            self.telegram.send_tokens_file(tokens, chat_id=chat_id)
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка выгрузки токенов: {e}")
+            self.telegram.send_error("Export Tokens", str(e))
+
     def _handle_balance_command(self, chat_id: str = None, message_id: int = None):
         """Обработчик команды баланса"""
         try:
