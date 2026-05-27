@@ -271,7 +271,11 @@ class TokenPipeline:
 
     
     def _handle_export_tokens_command(self, chat_id: str = None, message_id: int = None):
-        """Выгружает готовые токены в .txt файл без изменения статусов."""
+        """
+        Прогоняет готовые токены через валидатор:
+        - валидные  → статус 'sent',   попадают в .txt файл
+        - невалидные → статус 'invalid'
+        """
         try:
             ready_tokens = self.db.get_ready_tokens(limit=1000)
 
@@ -284,8 +288,86 @@ class TokenPipeline:
                 )
                 return
 
-            tokens = [t['token'] for t in ready_tokens]
-            self.telegram.send_tokens_file(tokens, chat_id=chat_id)
+            total = len(ready_tokens)
+            # Уведомление о начале
+            progress_text = (
+                f"📤 <b>Выгрузка токенов</b>\n\n"
+                f"Проверяю {total} токенов...\n"
+                f"⏳ Пожалуйста, подождите."
+            )
+            msg_id = self.telegram.send_message(progress_text, chat_id=chat_id)
+
+            valid_tokens = []
+            invalid_count = 0
+
+            for i, token_data in enumerate(ready_tokens, 1):
+                token = token_data['token']
+                try:
+                    is_valid, username = self.validator.validate_token(token)
+                except Exception as e:
+                    logger.warning(f"⚠️ [Export] Ошибка валидации токена: {e}")
+                    is_valid = False
+
+                if is_valid:
+                    valid_tokens.append(token)
+                    self.db.update_token_status(token=token, status='sent')
+                else:
+                    invalid_count += 1
+                    self.db.update_token_status(
+                        token=token,
+                        status='invalid',
+                        error='Failed validation on export'
+                    )
+
+                # Обновляем прогресс каждые 10 токенов
+                if msg_id and i % 10 == 0:
+                    pct = int(i / total * 100)
+                    try:
+                        self.telegram.edit_message(
+                            msg_id,
+                            (
+                                f"📤 <b>Выгрузка токенов</b>\n\n"
+                                f"⏳ Проверено: {i}/{total} ({pct}%)\n"
+                                f"✅ Валидных: {len(valid_tokens)}\n"
+                                f"❌ Невалидных: {invalid_count}"
+                            ),
+                            chat_id=chat_id,
+                        )
+                    except Exception:
+                        pass
+
+                time.sleep(0.3)
+
+            self.ready_tokens_notification_sent = False
+            logger.info(
+                f"📤 [Export] Завершено: валидных={len(valid_tokens)}, невалидных={invalid_count}"
+            )
+
+            # Итоговое сообщение
+            summary = (
+                f"📤 <b>Выгрузка завершена</b>\n\n"
+                f"🔍 Проверено: {total}\n"
+                f"✅ Валидных (→ sent): {len(valid_tokens)}\n"
+                f"❌ Невалидных (→ invalid): {invalid_count}"
+            )
+            if msg_id:
+                try:
+                    self.telegram.edit_message(msg_id, summary, chat_id=chat_id)
+                except Exception:
+                    self.telegram.send_message(summary, chat_id=chat_id)
+            else:
+                self.telegram.send_message(summary, chat_id=chat_id)
+
+            # Отправляем файл только если есть валидные токены
+            if valid_tokens:
+                self.telegram.send_tokens_file(valid_tokens, chat_id=chat_id)
+            else:
+                self.telegram.send_notification(
+                    title="⚠️ Нет валидных токенов",
+                    message="Все токены оказались невалидными, файл не отправлен.",
+                    level="WARNING",
+                    chat_id=chat_id,
+                )
 
         except Exception as e:
             logger.error(f"❌ Ошибка выгрузки токенов: {e}")
