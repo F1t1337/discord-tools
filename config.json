@@ -63,11 +63,18 @@
       "price_initial_delay": 10,
       "price_poll_interval": 10,
       "completion_poll_interval": 30,
-      "tskupka_confirm_timeout": 1680
+      "completion_timeout": 3600
     }
   },
-  
+
   "live_stats": {
     "enabled": true
+  },
+
+  "google_sheets": {
+    "enabled": false,
+    "credentials_path": "data/credentials.json",
+    "spreadsheet_id": "",
+    "sheet_name": "Sales"
   }
 }

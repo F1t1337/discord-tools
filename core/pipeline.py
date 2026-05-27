@@ -5,6 +5,8 @@ from queue import Queue
 from typing import Dict, List
 from datetime import datetime
 
+import concurrent.futures
+
 from modules.lzt_monitor import LZTMonitor
 from modules.validator import TokenValidator
 from modules.cleaner import process_token
@@ -12,6 +14,7 @@ from modules.database import Database
 from modules.telegram_bot import TelegramBot
 from modules.cloudflare_helper import CloudflareHelper
 from modules.sales import SalesManager
+from modules.google_sheets import GoogleSheetsLogger
 
 logger = logging.getLogger(__name__)
 
@@ -87,9 +90,15 @@ class TokenPipeline:
         # Cloudflare Tunnel Helper
         self.cloudflare = CloudflareHelper()
 
-        # Sales infrastructure (safe local draft mode, disabled by default)
-        self.sales = SalesManager(self.config.get('sales', {}))
-        
+        # Google Sheets logger
+        self.sheets = GoogleSheetsLogger(self.config.get('google_sheets', {}))
+
+        # Sales
+        self.sales = SalesManager(
+            self.config.get('sales', {}),
+            sheets_logger=self.sheets,
+        )
+
         logger.info("✅ Все модули инициализированы")
     
     def _register_bot_commands(self):
@@ -400,11 +409,9 @@ class TokenPipeline:
 
         def notify(title: str, message: str, level: str):
             nonlocal poll_message_id
-
             emoji = {"INFO": "ℹ️", "WARNING": "⚠️", "ERROR": "❌",
                      "SUCCESS": "✅", "POLL": "⏳"}.get(level, "📢")
             text = f"{emoji} <b>{title}</b>\n\n<code>{submission_id}</code>\n\n{message}"
-
             if level == "POLL":
                 if poll_message_id:
                     self.telegram.edit_message(poll_message_id, text, chat_id=chat_id)
@@ -414,13 +421,63 @@ class TokenPipeline:
                 poll_message_id = None
                 self.telegram.send_message(text, chat_id=chat_id)
 
-        result = self.sales.run_workflow(submission_id, notify_callback=notify)
+        result = self.sales.run_workflow(
+            submission_id,
+            notify_callback=notify,
+            re_clean_callback=self._reclean_tokens_sync,
+        )
         if result.get('ok'):
             submission = result.get('submission') or {}
             updated = self._set_submission_items_status(submission, 'sent')
             self.db.update_statistics(tokens_sent=updated)
         else:
             logger.error(f"❌ Sales workflow failed for {submission_id}: {result.get('error')}")
+
+    def _reclean_tokens_sync(self, tokens: list) -> int:
+        """
+        Синхронно повторно очищает токены прямо в потоке воркфлоу.
+        Таймаут 5 минут на всю пачку — мёртвые токены не блокируют процесс.
+        Возвращает количество успешно завершённых очисток.
+        """
+        if not tokens:
+            return 0
+
+        from modules.cleaner import ProxyManager, DiscordAPI
+
+        class _NullTracker:
+            def add_token(self, *a, **kw): pass
+            def update_status(self, *a, **kw): pass
+            def mark_completed(self, *a, **kw): pass
+
+        tracker = _NullTracker()
+
+        proxy_manager = None
+        if self.config.get('proxy', {}).get('enabled'):
+            try:
+                proxy_manager = ProxyManager()
+            except Exception as e:
+                logger.warning("⚠️ [Reclean] Proxy недоступны: %s", e)
+
+        max_workers = min(len(tokens), self.config.get('cleaner', {}).get('max_workers', 5))
+        timeout_secs = 300  # 5 минут максимум на всю пачку
+
+        futures = {}
+        completed = 0
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for token in tokens:
+                api = DiscordAPI(proxy_manager, tracker)
+                fut = executor.submit(process_token, api, token, tracker)
+                futures[fut] = token
+
+            done, not_done = concurrent.futures.wait(futures.keys(), timeout=timeout_secs)
+            completed = len(done)
+
+            for fut in not_done:
+                fut.cancel()
+                logger.warning("⚠️ [Reclean] Таймаут для токена %s...", futures[fut][:10])
+
+        logger.info("✅ [Reclean] Завершено %d/%d токенов", completed, len(tokens))
+        return completed
     
     def _handle_check_valid_command(self, chat_id: str = None, message_id: int = None):
         """Проверка готовых токенов через обычный validator, удаляет невалидные"""
