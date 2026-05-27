@@ -459,7 +459,9 @@ class TokenPipeline:
                 logger.warning("⚠️ [Reclean] Proxy недоступны: %s", e)
 
         max_workers = min(len(tokens), self.config.get('cleaner', {}).get('max_workers', 5))
-        timeout_secs = 300  # 5 минут максимум на всю пачку
+        # Таймаут из конфига (по умолчанию 15 минут).
+        # Нужен чтобы мёртвые токены не блокировали воркфлоу вечно.
+        timeout_secs = self.config.get('cleaner', {}).get('reclean_timeout', 900)
 
         futures = {}
         completed = 0
