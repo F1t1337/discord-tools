@@ -15,7 +15,8 @@
     "max_workers": 20,
     "max_messages_delete": 20,
     "base_delay": 1.0,
-    "min_delay": 0.8
+    "min_delay": 0.8,
+    "close_channels": true
   },
   
   "telegram": {

@@ -408,7 +408,17 @@ def check_message_has_links_or_attachments(msg: Dict) -> bool:
     return has_links or has_attachments or has_embeds
 
 
-def process_token(api: DiscordAPI, token: str, progress_tracker: ProgressTracker):
+def process_token(api: DiscordAPI, token: str, progress_tracker: ProgressTracker,
+                  close_channels: bool = True):
+    """Обрабатывает один токен.
+
+    Args:
+        api: DiscordAPI клиент
+        token: Discord токен
+        progress_tracker: трекер прогресса
+        close_channels: если False, чаты, которые обычно закрываются при очистке,
+                        не закрываются (DELETE канала пропускается).
+    """
     headers = {"Authorization": token, "Content-Type": "application/json"}
 
     # Проверка токена
@@ -502,6 +512,15 @@ def process_token(api: DiscordAPI, token: str, progress_tracker: ProgressTracker
 
             # Закрываем канал если нужно
             if need_to_close:
+                # Закрытие чатов отключено — пропускаем канал без удаления
+                if not close_channels:
+                    progress_tracker.update_status(token, f"⏭️ Закрытие выкл",
+                                                   processed_channels=processed_channels + 1,
+                                                   deleted_messages=deleted_messages,
+                                                   closed_channels=closed_channels)
+                    processed_channels += 1
+                    continue
+
                 progress_tracker.update_status(token, f"🚫 Закрытие канала")
 
                 close_response = api.safe_request(

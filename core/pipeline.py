@@ -1,4 +1,6 @@
+import json
 import logging
+import os
 import time
 import threading
 from queue import Queue
@@ -32,15 +34,20 @@ class TokenPipeline:
     6. Telegram -> РУЧНАЯ отправка по кнопке
     """
     
-    def __init__(self, config: Dict):
+    def __init__(self, config: Dict, config_path: str = "config.json"):
         """
         Инициализация Pipeline
-        
+
         Args:
             config: Конфигурация системы
+            config_path: Путь к файлу config.json (для сохранения настроек)
         """
         self.config = config
+        self.config_path = config_path
         self.running = False
+
+        # Закрывать ли чаты при очистке (переключается из Telegram)
+        self.close_channels = bool(config.get('cleaner', {}).get('close_channels', True))
         
         # Очереди для передачи между этапами
         self.new_tokens_queue = Queue()      # Новые токены из LZT
@@ -112,6 +119,8 @@ class TokenPipeline:
         self.telegram.register_command_handler('upload_tokens', self._handle_upload_tokens_command)
         self.telegram.register_command_handler('sales_status', self._handle_sales_status_command)
         self.telegram.register_command_handler('sales_cancel', self._handle_sales_cancel_command)
+        self.telegram.register_command_handler('settings', self._handle_settings_command)
+        self.telegram.register_command_handler('toggle_close_channels', self._handle_toggle_close_channels_command)
         self.telegram.register_token_upload_handler(self._handle_tokens_uploaded)
 
         logger.info("✅ Команды Telegram бота зарегистрированы")
@@ -546,7 +555,8 @@ class TokenPipeline:
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = [
-                executor.submit(process_token, DiscordAPI(proxy_manager, tracker), token, tracker)
+                executor.submit(process_token, DiscordAPI(proxy_manager, tracker), token, tracker,
+                                self.close_channels)
                 for token in tokens
             ]
             concurrent.futures.wait(futures)
@@ -791,6 +801,56 @@ class TokenPipeline:
             logger.error(f"❌ Ошибка получения статуса: {e}")
             self.telegram.send_error("Status", str(e))
     
+    def _handle_settings_command(self, chat_id: str = None, message_id: int = None):
+        """Показывает меню настроек."""
+        try:
+            self.telegram.send_settings_menu(
+                close_channels=self.close_channels,
+                chat_id=chat_id,
+                message_id=message_id,
+            )
+        except Exception as e:
+            logger.error(f"❌ Ошибка открытия настроек: {e}")
+            self.telegram.send_error("Settings", str(e))
+
+    def _handle_toggle_close_channels_command(self, chat_id: str = None, message_id: int = None):
+        """Переключает закрытие чатов при очистке и сохраняет настройку."""
+        try:
+            self.close_channels = not self.close_channels
+            self._persist_close_channels_setting(self.close_channels)
+
+            state = "включено" if self.close_channels else "выключено"
+            logger.info(f"⚙️ Закрытие чатов при очистке: {state}")
+
+            self.telegram.send_settings_menu(
+                close_channels=self.close_channels,
+                chat_id=chat_id,
+                message_id=message_id,
+            )
+        except Exception as e:
+            logger.error(f"❌ Ошибка переключения закрытия чатов: {e}")
+            self.telegram.send_error("Settings", str(e))
+
+    def _persist_close_channels_setting(self, value: bool):
+        """
+        Сохраняет настройку close_channels в config.json, не трогая остальные поля
+        и не раскрывая ${ENV} плейсхолдеры (читаем сырой файл, а не self.config).
+        """
+        # Держим in-memory конфиг в актуальном состоянии
+        self.config.setdefault('cleaner', {})['close_channels'] = value
+
+        try:
+            if not os.path.exists(self.config_path):
+                logger.warning(f"⚠️ config.json не найден ({self.config_path}), настройка не сохранена на диск")
+                return
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                raw_config = json.load(f)
+            raw_config.setdefault('cleaner', {})['close_channels'] = value
+            with open(self.config_path, 'w', encoding='utf-8') as f:
+                json.dump(raw_config, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.error(f"❌ Не удалось сохранить настройку close_channels: {e}")
+
     def _handle_dashboard_url_command(self, chat_id: str = None, message_id: int = None):
         """Обработчик команды получения Dashboard URL"""
         try:
@@ -1039,7 +1099,8 @@ class TokenPipeline:
                 api = DiscordAPI(proxy_manager, progress_tracker)
                 
                 # Запускаем очистку
-                process_token(api, purchase['token'], progress_tracker)
+                process_token(api, purchase['token'], progress_tracker,
+                              close_channels=self.close_channels)
                 
                 logger.info(f"✅ [Cleaner] Очистка завершена для {purchase.get('username', 'Unknown')}")
                 

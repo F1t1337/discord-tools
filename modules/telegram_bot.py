@@ -128,6 +128,7 @@ class TelegramBot:
             ],
             [
                 {"text": "🧾 Продажи", "callback_data": "sales_status"},
+                {"text": "⚙️ Настройки", "callback_data": "settings"},
             ],
         ]
 
@@ -146,6 +147,31 @@ class TelegramBot:
                 self.last_menu_message_id = new_message_id
             return new_message_id is not None
     
+    def send_settings_menu(self, close_channels: bool, chat_id: str = None, message_id: int = None) -> bool:
+        """Отправляет или редактирует меню настроек."""
+        state_emoji = "🟢" if close_channels else "🔴"
+        state_text = "Включено" if close_channels else "Выключено"
+        toggle_label = "🔴 Выключить закрытие чатов" if close_channels else "🟢 Включить закрытие чатов"
+
+        text = (
+            "⚙️ <b>Настройки</b>\n\n"
+            f"🚫 <b>Закрытие чатов при очистке:</b> {state_emoji} {state_text}\n\n"
+            "Если выключено, чаты, которые обычно закрываются во время очистки, "
+            "останутся открытыми."
+        )
+
+        keyboard = {
+            "inline_keyboard": [
+                [{"text": toggle_label, "callback_data": "toggle_close_channels"}],
+                [{"text": "◀️ Назад", "callback_data": "menu"}],
+            ]
+        }
+
+        if message_id:
+            return self.edit_message(message_id, text, reply_markup=keyboard, chat_id=chat_id)
+        result = self.send_message(text, reply_markup=keyboard, chat_id=chat_id)
+        return result is not None
+
     def send_tokens_file(self, tokens: List[str], filename: str = None, chat_id: str = None) -> bool:
         """Отправляет токены в виде .txt файла"""
         if not tokens:
