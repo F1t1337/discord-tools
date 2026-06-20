@@ -147,22 +147,30 @@ class TelegramBot:
                 self.last_menu_message_id = new_message_id
             return new_message_id is not None
     
-    def send_settings_menu(self, close_channels: bool, chat_id: str = None, message_id: int = None) -> bool:
+    def send_settings_menu(self, close_channels: bool, lzt_enabled: bool = True,
+                           chat_id: str = None, message_id: int = None) -> bool:
         """Отправляет или редактирует меню настроек."""
-        state_emoji = "🟢" if close_channels else "🔴"
-        state_text = "Включено" if close_channels else "Выключено"
-        toggle_label = "🔴 Выключить закрытие чатов" if close_channels else "🟢 Включить закрытие чатов"
+        cc_emoji = "🟢" if close_channels else "🔴"
+        cc_text = "Включено" if close_channels else "Выключено"
+        cc_toggle = "🔴 Выключить закрытие чатов" if close_channels else "🟢 Включить закрытие чатов"
+
+        lzt_emoji = "🟢" if lzt_enabled else "🔴"
+        lzt_text = "Включено" if lzt_enabled else "Выключено"
+        lzt_toggle = "🔴 Выключить приём с lolz" if lzt_enabled else "🟢 Включить приём с lolz"
 
         text = (
             "⚙️ <b>Настройки</b>\n\n"
-            f"🚫 <b>Закрытие чатов при очистке:</b> {state_emoji} {state_text}\n\n"
+            f"🚫 <b>Закрытие чатов при очистке:</b> {cc_emoji} {cc_text}\n"
             "Если выключено, чаты, которые обычно закрываются во время очистки, "
-            "останутся открытыми."
+            "останутся открытыми.\n\n"
+            f"🛒 <b>Получение аккаунтов с lolz:</b> {lzt_emoji} {lzt_text}\n"
+            "Если выключено, новые аккаунты с lolz не принимаются в обработку."
         )
 
         keyboard = {
             "inline_keyboard": [
-                [{"text": toggle_label, "callback_data": "toggle_close_channels"}],
+                [{"text": cc_toggle, "callback_data": "toggle_close_channels"}],
+                [{"text": lzt_toggle, "callback_data": "toggle_lzt"}],
                 [{"text": "◀️ Назад", "callback_data": "menu"}],
             ]
         }

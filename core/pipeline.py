@@ -48,6 +48,9 @@ class TokenPipeline:
 
         # Закрывать ли чаты при очистке (переключается из Telegram)
         self.close_channels = bool(config.get('cleaner', {}).get('close_channels', True))
+
+        # Получать ли новые аккаунты с lolz/LZT (переключается из Telegram)
+        self.lzt_enabled = bool(config.get('lzt', {}).get('enabled', True))
         
         # Очереди для передачи между этапами
         self.new_tokens_queue = Queue()      # Новые токены из LZT
@@ -121,6 +124,7 @@ class TokenPipeline:
         self.telegram.register_command_handler('sales_cancel', self._handle_sales_cancel_command)
         self.telegram.register_command_handler('settings', self._handle_settings_command)
         self.telegram.register_command_handler('toggle_close_channels', self._handle_toggle_close_channels_command)
+        self.telegram.register_command_handler('toggle_lzt', self._handle_toggle_lzt_command)
         self.telegram.register_token_upload_handler(self._handle_tokens_uploaded)
 
         logger.info("✅ Команды Telegram бота зарегистрированы")
@@ -806,6 +810,7 @@ class TokenPipeline:
         try:
             self.telegram.send_settings_menu(
                 close_channels=self.close_channels,
+                lzt_enabled=self.lzt_enabled,
                 chat_id=chat_id,
                 message_id=message_id,
             )
@@ -817,13 +822,14 @@ class TokenPipeline:
         """Переключает закрытие чатов при очистке и сохраняет настройку."""
         try:
             self.close_channels = not self.close_channels
-            self._persist_close_channels_setting(self.close_channels)
+            self._persist_config_value('cleaner', 'close_channels', self.close_channels)
 
             state = "включено" if self.close_channels else "выключено"
             logger.info(f"⚙️ Закрытие чатов при очистке: {state}")
 
             self.telegram.send_settings_menu(
                 close_channels=self.close_channels,
+                lzt_enabled=self.lzt_enabled,
                 chat_id=chat_id,
                 message_id=message_id,
             )
@@ -831,13 +837,32 @@ class TokenPipeline:
             logger.error(f"❌ Ошибка переключения закрытия чатов: {e}")
             self.telegram.send_error("Settings", str(e))
 
-    def _persist_close_channels_setting(self, value: bool):
+    def _handle_toggle_lzt_command(self, chat_id: str = None, message_id: int = None):
+        """Переключает получение аккаунтов с lolz/LZT и сохраняет настройку."""
+        try:
+            self.lzt_enabled = not self.lzt_enabled
+            self._persist_config_value('lzt', 'enabled', self.lzt_enabled)
+
+            state = "включено" if self.lzt_enabled else "выключено"
+            logger.info(f"⚙️ Получение аккаунтов с lolz: {state}")
+
+            self.telegram.send_settings_menu(
+                close_channels=self.close_channels,
+                lzt_enabled=self.lzt_enabled,
+                chat_id=chat_id,
+                message_id=message_id,
+            )
+        except Exception as e:
+            logger.error(f"❌ Ошибка переключения получения аккаунтов с lolz: {e}")
+            self.telegram.send_error("Settings", str(e))
+
+    def _persist_config_value(self, section: str, key: str, value):
         """
-        Сохраняет настройку close_channels в config.json, не трогая остальные поля
+        Сохраняет одно значение в config.json, не трогая остальные поля
         и не раскрывая ${ENV} плейсхолдеры (читаем сырой файл, а не self.config).
         """
         # Держим in-memory конфиг в актуальном состоянии
-        self.config.setdefault('cleaner', {})['close_channels'] = value
+        self.config.setdefault(section, {})[key] = value
 
         try:
             if not os.path.exists(self.config_path):
@@ -845,11 +870,11 @@ class TokenPipeline:
                 return
             with open(self.config_path, 'r', encoding='utf-8') as f:
                 raw_config = json.load(f)
-            raw_config.setdefault('cleaner', {})['close_channels'] = value
+            raw_config.setdefault(section, {})[key] = value
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(raw_config, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            logger.error(f"❌ Не удалось сохранить настройку close_channels: {e}")
+            logger.error(f"❌ Не удалось сохранить настройку {section}.{key}: {e}")
 
     def _handle_dashboard_url_command(self, chat_id: str = None, message_id: int = None):
         """Обработчик команды получения Dashboard URL"""
@@ -927,6 +952,11 @@ class TokenPipeline:
         
         while self.running:
             try:
+                # Получение аккаунтов с lolz отключено — ждём, не опрашивая LZT
+                if not self.lzt_enabled:
+                    time.sleep(self.config['lzt']['check_interval'])
+                    continue
+
                 # Проверяем новые покупки
                 new_purchases = self.lzt_monitor.get_new_purchases()
                 

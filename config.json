@@ -2,7 +2,8 @@
   "lzt": {
     "api_token": "${LZT_API_TOKEN}",
     "check_interval": 10,
-    "min_balance_alert": 100.0
+    "min_balance_alert": 100.0,
+    "enabled": true
   },
   
   "validator": {
