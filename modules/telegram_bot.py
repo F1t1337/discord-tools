@@ -6,13 +6,15 @@ import io
 import time
 import threading
 
+from modules.access_control import telegram_owner_ids
+
 logger = logging.getLogger(__name__)
 
 
 class TelegramBot:
     """Класс для работы с Telegram Bot API с поддержкой команд и кнопок"""
     
-    def __init__(self, bot_token: str, chat_id: str):
+    def __init__(self, bot_token: str, chat_id: str, allowed_user_ids=None):
         """
         Инициализация Telegram бота
         
@@ -22,6 +24,7 @@ class TelegramBot:
         """
         self.bot_token = bot_token
         self.chat_id = str(chat_id)
+        self.allowed_user_ids = telegram_owner_ids(allowed_user_ids, chat_id)
         self.base_url = f"https://api.telegram.org/bot{bot_token}"
         self.file_base_url = f"https://api.telegram.org/file/bot{bot_token}"
         self.last_update_id = 0
@@ -47,11 +50,11 @@ class TelegramBot:
             if response.status_code == 200:
                 return response.json()
             else:
-                logger.error(f"❌ Telegram API error: {response.status_code} - {response.text}")
+                logger.error("Telegram API error: HTTP %s", response.status_code)
                 return None
                 
         except Exception as e:
-            logger.error(f"❌ Ошибка отправки в Telegram: {e}")
+            logger.error("Ошибка отправки в Telegram: %s", type(e).__name__)
             return None
     
     def send_message(self, text: str, parse_mode: str = "HTML", reply_markup: dict = None, chat_id: str = None) -> Optional[int]:
@@ -119,7 +122,6 @@ class TelegramBot:
                 {"text": "💰 Баланс LZT", "callback_data": "balance"},
             ],
             [
-                {"text": "📦 Продать токены", "callback_data": "send_tokens"},
                 {"text": "📤 Выгрузить токены", "callback_data": "export_tokens"},
             ],
             [
@@ -127,7 +129,6 @@ class TelegramBot:
                 {"text": "🔄 Статус", "callback_data": "status"},
             ],
             [
-                {"text": "🧾 Продажи", "callback_data": "sales_status"},
                 {"text": "⚙️ Настройки", "callback_data": "settings"},
             ],
         ]
@@ -338,25 +339,16 @@ class TelegramBot:
         result = self.send_message(text)
         return result is not None
     
-    def send_ready_tokens_info(self, count: int, min_required: int, chat_id: str = None, message_id: int = None) -> bool:
+    def send_ready_tokens_info(self, count: int, chat_id: str = None, message_id: int = None) -> bool:
         """Отправляет или редактирует информацию о готовых токенах"""
-        if count >= min_required:
-            status = "✅"
-            message = f"Готово {count} токенов. Можно отправлять!"
-        else:
-            status = "⏳"
-            message = f"Готово только {count} токенов. Нужно минимум {min_required}."
-        
         # Кнопка "Назад"
         keyboard = {
             "inline_keyboard": [[{"text": "◀️ Назад", "callback_data": "menu"}]]
         }
         
         text = (
-            f"{status} <b>Готовые токены</b>\n\n"
-            f"📦 Готово к отправке: {count} шт.\n"
-            f"📊 Минимум для отправки: {min_required} шт.\n\n"
-            f"{message}"
+            f"📦 <b>Готовые токены</b>\n\n"
+            f"Обработка завершена: {count} шт."
         )
         
         if message_id:
@@ -386,7 +378,6 @@ class TelegramBot:
             f"🧹 Очищаются: {counts.get('cleaning', 0)}\n"
             f"✨ Очищены: {counts.get('cleaned', 0)}\n"
             f"📦 Готовы: {counts.get('ready', 0)}\n"
-            f"🧾 В продаже: {counts.get('sale_pending', 0)}\n"
             f"📤 Отправлены: {counts.get('sent', 0)}\n"
             f"❌ Невалидные: {counts.get('invalid', 0)}"
         )
@@ -482,120 +473,7 @@ class TelegramBot:
         result = self.send_message(text, chat_id=chat_id)
         return result is not None
 
-    def send_sales_status(self, summary: Dict, chat_id: str = None, message_id: int = None) -> bool:
-        """Отправляет статус продаж."""
-        if not summary.get("enabled"):
-            text = "🧾 <b>Продажи</b>\n\n⚠️ Модуль продаж выключен."
-            keyboard = {"inline_keyboard": [[{"text": "◀️ Назад", "callback_data": "menu"}]]}
-        else:
-            active = summary.get("active", 0)
-            completed = summary.get("completed", 0)
-            failed = summary.get("failed", 0)
-            canceled = summary.get("canceled", 0)
 
-            text = (
-                "🧾 <b>Продажи</b>\n\n"
-                f"🔄 В работе: <b>{active}</b>\n"
-                f"✅ Завершено: <b>{completed}</b>\n"
-            )
-            if failed:
-                text += f"❌ Ошибки: <b>{failed}</b>\n"
-            if canceled:
-                text += f"↩️ Отменено: <b>{canceled}</b>\n"
-
-            recent = summary.get("recent", [])
-            if recent:
-                text += "\n<b>Последние:</b>\n"
-                for item in recent:
-                    sid = item.get("submission_id", "?")
-                    short_id = sid.split("-")[-1] if "-" in sid else sid[-8:]
-                    status = item.get("status", "?")
-                    count = item.get("accepted_count", 0)
-
-                    wf = item.get("workflow") or {}
-                    stage = wf.get("stage", "")
-
-                    status_emoji = {
-                        "PENDING": "⏳",
-                        "TSKUPKA_PRICE_PENDING": "💰",
-                        "TOKENBUYROBOT_PRICE_PENDING": "💰",
-                        "TOKENBUYROBOT_COMPLETION_PENDING": "⏳",
-                        "COMPLETED": "✅",
-                        "WORKFLOW_FAILED": "❌",
-                        "CANCELED": "↩️",
-                    }.get(status, "❓")
-
-                    prices = []
-                    if wf.get("tskupka_price") is not None:
-                        prices.append(f"tsk: {wf['tskupka_price']}")
-                    if wf.get("tokenbuyrobot_price") is not None:
-                        prices.append(f"tbr: {wf['tokenbuyrobot_price']}")
-                    price_str = " | ".join(prices)
-
-                    status_label = {
-                        "PENDING": "подготовка",
-                        "TSKUPKA_PRICE_PENDING": "ждём цену tskupka",
-                        "TOKENBUYROBOT_PRICE_PENDING": "ждём цену tbr",
-                        "TOKENBUYROBOT_COMPLETION_PENDING": "ждём tbr",
-                        "COMPLETED": "завершена",
-                        "WORKFLOW_FAILED": "ошибка",
-                        "CANCELED": "отменена",
-                    }.get(status, status)
-
-                    text += f"{status_emoji} <code>{short_id}</code> {count} шт. — {status_label}"
-                    if price_str:
-                        text += f"\n     {price_str}"
-                    text += "\n"
-
-            keyboard_rows = []
-            # Кнопка отмены для активных заявок
-            active_subs = [
-                s for s in recent
-                if str(s.get("status", "")).upper() not in {"COMPLETED", "CANCELED", "WORKFLOW_FAILED"}
-            ]
-            for item in active_subs[:2]:
-                sid = item.get("submission_id")
-                short_id = sid.split("-")[-1] if sid and "-" in sid else (sid or "?")[-8:]
-                keyboard_rows.append([
-                    {"text": f"↩️ Отменить {short_id}", "callback_data": f"sales_cancel:{sid}"},
-                ])
-
-            keyboard_rows.append([{"text": "🔄 Обновить", "callback_data": "sales_status"}])
-            keyboard_rows.append([{"text": "◀️ Назад", "callback_data": "menu"}])
-            keyboard = {"inline_keyboard": keyboard_rows}
-
-        if message_id:
-            return self.edit_message(message_id, text, reply_markup=keyboard, chat_id=chat_id)
-        result = self.send_message(text, reply_markup=keyboard, chat_id=chat_id)
-        return result is not None
-
-    def send_sale_action_result(self, title: str, message: str, success: bool = True,
-                                chat_id: str = None, message_id: int = None) -> bool:
-        """Показывает результат действия с заявкой."""
-        emoji = "✅" if success else "❌"
-        keyboard = {
-            "inline_keyboard": [
-                [{"text": "🧾 К продажам", "callback_data": "sales_status"}],
-                [{"text": "◀️ В меню", "callback_data": "menu"}],
-            ]
-        }
-        text = f"{emoji} <b>{title}</b>\n\n{message}"
-
-        if message_id:
-            return self.edit_message(message_id, text, reply_markup=keyboard, chat_id=chat_id)
-        return self.send_message(text, reply_markup=keyboard, chat_id=chat_id) is not None
-    
-    def send_insufficient_tokens_error(self, current: int, required: int, chat_id: str = None) -> bool:
-        """Отправляет ошибку о недостаточном количестве токенов"""
-        text = (
-            f"❌ <b>Недостаточно токенов для отправки</b>\n\n"
-            f"📦 Готовых токенов: {current} шт.\n"
-            f"📊 Минимум требуется: {required} шт.\n\n"
-            f"⏳ Дождитесь обработки новых токенов и попробуйте снова."
-        )
-        
-        result = self.send_message(text, chat_id=chat_id)
-        return result is not None
     
     def register_command_handler(self, command: str, handler: Callable):
         """Регистрирует обработчик команды"""
@@ -659,7 +537,7 @@ class TelegramBot:
             logger.error(f"❌ Не удалось скачать файл: {response.status_code}")
             return None
         except Exception as e:
-            logger.error(f"❌ Ошибка скачивания файла: {e}")
+            logger.error("Ошибка скачивания Telegram-файла: %s", type(e).__name__)
             return None
 
     def send_upload_result(self, chat_id: str, added: int, duplicates: int,
@@ -690,7 +568,7 @@ class TelegramBot:
                 if data.get('ok'):
                     return data.get('result', [])
         except Exception as e:
-            logger.error(f"❌ Ошибка получения обновлений: {e}")
+            logger.error("Ошибка получения Telegram-обновлений: %s", type(e).__name__)
         
         return []
     
@@ -730,6 +608,16 @@ class TelegramBot:
         """Обрабатывает одно обновление"""
         update_id = update.get('update_id', 0)
         self.last_update_id = max(self.last_update_id, update_id)
+
+        event = update.get('callback_query') or update.get('message') or {}
+        sender = event.get('from') or {}
+        owner_id = str(sender.get('id', ''))
+        message = event.get('message', {}) if 'callback_query' in update else event
+        chat = message.get('chat') or {}
+        if (owner_id not in self.allowed_user_ids or sender.get('is_bot') or
+                str(chat.get('id', '')) != owner_id or chat.get('type') != 'private'):
+            logger.warning("Отклонено Telegram-обновление от пользователя %s", owner_id)
+            return
         
         # Обработка callback query (нажатия на кнопки)
         if 'callback_query' in update:
@@ -782,8 +670,8 @@ class TelegramBot:
             from_user = message.get('from', {})
             user_chat_id = str(from_user.get('id', ''))
 
-            logger.info(f"📱 Получено сообщение от {user_chat_id}: "
-                        f"{'[document] ' + (document.get('file_name') or '') if document else text}")
+            logger.info("Telegram-сообщение от владельца %s (%s)", user_chat_id,
+                        'document' if document else 'text')
 
             # === Ручная загрузка токенов: документ (.txt) ===
             if document and user_chat_id in self.pending_uploads:

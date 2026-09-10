@@ -12,49 +12,15 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from core.pipeline import TokenPipeline
 
 
-def load_env_file(env_path: str = ".env"):
-    """Загружает простые KEY=VALUE строки из .env без внешних зависимостей."""
-    if not os.path.exists(env_path):
-        return
-
-    with open(env_path, 'r', encoding='utf-8') as f:
-        for raw_line in f:
-            line = raw_line.strip()
-            if not line or line.startswith('#') or '=' not in line:
-                continue
-            key, value = line.split('=', 1)
-            key = key.strip()
-            value = value.strip().strip('"').strip("'")
-            if key and key not in os.environ:
-                os.environ[key] = value
+from modules.configuration import PROJECT_ROOT, load_env_file, resolve_env_placeholders, load_config as read_config
+from modules.access_control import dashboard_settings, telegram_owner_ids
 
 
-def resolve_env_placeholders(value):
-    """Рекурсивно заменяет строки вида ${ENV_NAME} значениями окружения."""
-    if isinstance(value, dict):
-        return {k: resolve_env_placeholders(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [resolve_env_placeholders(item) for item in value]
-    if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
-        return os.environ.get(value[2:-1], "")
-    return value
-
-
-def load_config(config_path: str = "config.json") -> dict:
-    """Загружает конфигурацию из JSON файла"""
+def load_config(config_path=None) -> dict:
     try:
-        load_env_file()
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = json.load(f)
-        config = resolve_env_placeholders(config)
-        print(f"✅ Конфигурация загружена: {config_path}")
-        return config
-    except FileNotFoundError:
-        print(f"❌ Файл конфигурации не найден: {config_path}")
-        print("💡 Создайте файл config.json на основе примера")
-        sys.exit(1)
-    except json.JSONDecodeError as e:
-        print(f"❌ Ошибка в файле конфигурации: {e}")
+        return read_config(config_path)
+    except (OSError, ValueError) as exc:
+        print(f"Ошибка конфигурации: {type(exc).__name__}")
         sys.exit(1)
 
 
@@ -113,22 +79,13 @@ def check_config(config: dict) -> bool:
     if not tg_chat or tg_chat == "YOUR_CHAT_ID_HERE":
         errors.append("❌ Telegram chat_id не настроен")
 
-    # Проверка Sales API
-    sales_config = config.get('sales', {})
-    if sales_config.get('enabled') and sales_config.get('mode') == 'external_submit':
-        sales_key_env = sales_config.get('api_key_env', 'SALES_API_KEY')
-        if not os.environ.get(sales_key_env):
-            errors.append(f"❌ Sales API key не настроен ({sales_key_env})")
-    if sales_config.get('enabled') and sales_config.get('mode') == 'price_workflow':
-        providers = sales_config.get('providers', {})
-        for provider, default_env in {
-            'tskupka': 'TSKUPKA_API_KEY',
-            'tokenbuyrobot': 'TOKENBUYROBOT_API_KEY',
-        }.items():
-            key_env = providers.get(provider, {}).get('api_key_env', default_env)
-            if not os.environ.get(key_env):
-                errors.append(f"❌ {provider} API key не настроен ({key_env})")
-    
+    try:
+        telegram_owner_ids(config.get('telegram', {}).get('allowed_user_ids'), tg_chat)
+        if '--dashboard' in sys.argv or config.get('dashboard', {}).get('enabled'):
+            dashboard_settings(config)
+    except ValueError as exc:
+        errors.append(str(exc))
+
     # Проверка папок
     db_path = config.get('database', {}).get('path', 'data/tokens.db')
     db_dir = os.path.dirname(db_path)
@@ -174,11 +131,8 @@ def print_status_info(config: dict, use_dashboard: bool = False):
     print(f"⚠️  Минимальный баланс:   {config['lzt']['min_balance_alert']} ₽")
     print(f"✅ Validator потоков:    {config['validator']['max_workers']}")
     print(f"🧹 Cleaner потоков:      {config['cleaner']['max_workers']}")
-    print(f"📤 Отправка токенов:     {config['telegram']['min_tokens']}-{config['telegram']['max_tokens']} шт")
     print(f"💾 База данных:          {config['database']['path']}")
     print(f"🔐 Прокси:               {'Включено' if config['proxy']['enabled'] else 'Выключено'}")
-    sales_config = config.get('sales', {})
-    print(f"🧾 Продажа:              {sales_config.get('mode', 'local_queue')}")
     
     if use_dashboard:
         dashboard_port = config.get('dashboard', {}).get('port', 5000)
@@ -197,7 +151,7 @@ def start_dashboard_server(pipeline, config):
         
         # Получаем настройки
         dashboard_config = config.get('dashboard', {})
-        host = dashboard_config.get('host', '0.0.0.0')
+        host = dashboard_config.get('host', '127.0.0.1')
         port = dashboard_config.get('port', 5000)
         
         # Запускаем сервер в отдельном потоке
@@ -215,8 +169,8 @@ def start_dashboard_server(pipeline, config):
         return dashboard_thread
         
     except ImportError:
-        print("\n⚠️  Flask не установлен - Dashboard отключен")
-        print("💡 Установите: pip install flask flask-cors")
+        print("\n⚠️  Зависимости панели не установлены")
+        print("💡 Установите: pip install -r requirements.txt")
         return None
     except Exception as e:
         print(f"\n❌ Ошибка запуска Dashboard: {e}")
@@ -247,7 +201,7 @@ def main():
     
     # Создаем Pipeline
     print("\n🚀 Инициализация Pipeline...")
-    pipeline = TokenPipeline(config)
+    pipeline = TokenPipeline(config, config_path=str(PROJECT_ROOT / 'config.json'))
     
     # Запускаем
     print("▶️  Запуск автоматической обработки...\n")

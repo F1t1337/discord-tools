@@ -1,11 +1,14 @@
-import json
 import sqlite3
 import logging
+import threading
+from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime, date
 from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
+_SCHEMA_LOCK = threading.RLock()
+SCHEMA_VERSION = 1
 
 
 class Database:
@@ -18,9 +21,34 @@ class Database:
         Args:
             db_path: Путь к файлу базы данных
         """
-        self.db_path = db_path
-        self._create_tables()
+        self.db_path = str(Path(db_path).resolve())
+        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+        with _SCHEMA_LOCK:
+            self._backup_legacy_schema()
+            self._create_tables()
         logger.info(f"📦 База данных инициализирована: {db_path}")
+
+    def _backup_legacy_schema(self):
+        path = Path(self.db_path)
+        if not path.exists() or path.stat().st_size == 0:
+            return
+        source = sqlite3.connect(self.db_path)
+        try:
+            version = source.execute("PRAGMA user_version").fetchone()[0]
+            if version > SCHEMA_VERSION:
+                raise RuntimeError("Версия базы новее приложения; миграция отменена")
+            if version == SCHEMA_VERSION:
+                return
+            backup = path.with_name(path.name + ".backup_" + datetime.now().strftime("%Y%m%d_%H%M%S_%f"))
+            backup.touch(mode=0o600, exist_ok=False)
+            destination = sqlite3.connect(str(backup))
+            try:
+                source.backup(destination)
+            finally:
+                destination.close()
+            logger.info("Создана резервная копия перед миграцией БД")
+        finally:
+            source.close()
     
     @contextmanager
     def get_connection(self):
@@ -42,7 +70,10 @@ class Database:
     def _create_tables(self):
         """Создает таблицы если их нет"""
         with self.get_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             cursor = conn.cursor()
+            if cursor.execute("PRAGMA user_version").fetchone()[0] > SCHEMA_VERSION:
+                raise RuntimeError('Версия схемы БД новее поддерживаемой')
             
             # Таблица токенов
             cursor.execute("""
@@ -103,31 +134,69 @@ class Database:
                 )
             """)
             
-            # Таблица продаж
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS sales (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    submission_id TEXT NOT NULL UNIQUE,
-                    status TEXT NOT NULL DEFAULT 'PENDING',
-                    source TEXT DEFAULT 'telegram',
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    accepted_count INTEGER DEFAULT 0,
-                    total_price REAL DEFAULT 0,
-                    workflow TEXT DEFAULT '{}',
-                    workflow_error TEXT,
-                    items TEXT DEFAULT '[]'
-                )
-            """)
+            # Additive migration preserves IDs, statuses and existing rows.
+            columns = {row['name'] for row in cursor.execute("PRAGMA table_info(tokens)")}
+            additions = {
+                'seller_username': 'TEXT', 'username': 'TEXT', 'lzt_item_id': 'INTEGER',
+                'price': 'REAL', 'validated_at': 'REAL', 'cleaned_at': 'REAL',
+                'sent_at': 'REAL', 'error': 'TEXT', 'cleaning_progress': 'TEXT',
+            }
+            for name, declaration in additions.items():
+                if name not in columns:
+                    cursor.execute(f"ALTER TABLE tokens ADD COLUMN {name} {declaration}")
+            seller_columns = {row['name'] for row in cursor.execute("PRAGMA table_info(seller_statistics)")}
+            if 'seller_username' not in seller_columns:
+                raise RuntimeError("Неизвестная схема seller_statistics; используйте резервную копию для разбора")
+            if 'avg_price' not in seller_columns:
+                cursor.execute("ALTER TABLE seller_statistics ADD COLUMN avg_price REAL DEFAULT 0")
+                cursor.execute("UPDATE seller_statistics SET avg_price = CASE WHEN total_bought > 0 THEN total_spent * 1.0 / total_bought ELSE 0 END")
+            if cursor.execute("PRAGMA user_version").fetchone()[0] < SCHEMA_VERSION:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO seller_statistics
+                    (seller_username, total_bought, total_invalid, total_spent, avg_price,
+                     valid_percent, last_purchase_at, created_at)
+                    SELECT seller_username, COUNT(*), SUM(CASE WHEN status = 'invalid' THEN 1 ELSE 0 END),
+                           SUM(COALESCE(price, 0)), AVG(COALESCE(price, 0)),
+                           SUM(CASE WHEN status != 'invalid' THEN 100.0 ELSE 0 END) / COUNT(*),
+                           MAX(created_at), MIN(created_at)
+                    FROM tokens WHERE seller_username IS NOT NULL AND seller_username != ''
+                    GROUP BY seller_username
+                """)
 
             # Индексы для быстрого поиска
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_tokens_status ON tokens(status)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_tokens_created ON tokens(created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sales_submission ON sales(submission_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sales_created ON sales(created_at)")
 
-            conn.commit()
+            cursor.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+
+    def list_account_metadata(self, status=None, search='', limit=25, offset=0):
+        """Administrative projection: never select the token column."""
+        clauses, params = [], []
+        if status == 'pending_review':
+            clauses.append('status IN (?, ?, ?, ?)')
+            params.extend(['new', 'validated', 'cleaning', 'cleaned'])
+        elif status:
+            clauses.append('status = ?')
+            params.append(status)
+        if search:
+            escaped = search.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+            clauses.append("(username LIKE ? ESCAPE '\\' OR seller_username LIKE ? ESCAPE '\\' OR CAST(id AS TEXT) = ?)")
+            params.extend([f'%{escaped}%', f'%{escaped}%', search])
+        where = ' WHERE ' + ' AND '.join(clauses) if clauses else ''
+        fields = ('id, username, seller_username, lzt_item_id, price, status, '
+                  'created_at, validated_at, cleaned_at, sent_at, cleaning_progress')
+        with self.get_connection() as conn:
+            total = conn.execute('SELECT COUNT(*) FROM tokens' + where, params).fetchone()[0]
+            rows = conn.execute('SELECT ' + fields + ' FROM tokens' + where +
+                                ' ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?',
+                                params + [limit, offset]).fetchall()
+        return {'items': [dict(row) for row in rows], 'total': total, 'limit': limit, 'offset': offset}
+
+    def schema_version(self):
+        with self.get_connection() as conn:
+            return conn.execute('PRAGMA user_version').fetchone()[0]
+
     
     # ==================== РАБОТА С ТОКЕНАМИ ====================
     
@@ -640,99 +709,6 @@ class Database:
         except Exception as e:
             logger.error(f"❌ Ошибка получения продавца: {e}")
             return None
-
-
-    # ==================== ПРОДАЖИ ====================
-
-    def sale_create(self, submission: Dict) -> bool:
-        """Сохраняет новую заявку в БД."""
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT OR IGNORE INTO sales
-                    (submission_id, status, source, created_at, updated_at,
-                     accepted_count, total_price, workflow, items)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    submission["submission_id"],
-                    submission.get("status", "PENDING"),
-                    submission.get("source", "telegram"),
-                    submission.get("created_at", datetime.now().isoformat(timespec="seconds")),
-                    submission.get("updated_at", datetime.now().isoformat(timespec="seconds")),
-                    submission.get("accepted_count", 0),
-                    submission.get("total_price", 0),
-                    json.dumps(submission.get("workflow", {}), ensure_ascii=False),
-                    json.dumps(submission.get("items", []), ensure_ascii=False),
-                ))
-                return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"❌ sale_create: {e}")
-            return False
-
-    def sale_update_fields(self, submission_id: str, fields: Dict) -> Optional[Dict]:
-        """Обновляет поля заявки. Допустимые поля: status, workflow, workflow_error."""
-        allowed = {"status", "workflow", "workflow_error"}
-        safe = {k: v for k, v in fields.items() if k in allowed}
-        if not safe:
-            return self.sale_get(submission_id)
-
-        set_clauses = []
-        values = []
-        for k, v in safe.items():
-            set_clauses.append(f"{k} = ?")
-            values.append(
-                json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v
-            )
-        set_clauses.append("updated_at = ?")
-        values.append(datetime.now().isoformat(timespec="seconds"))
-        values.append(submission_id)
-
-        try:
-            with self.get_connection() as conn:
-                conn.execute(
-                    f"UPDATE sales SET {', '.join(set_clauses)} WHERE submission_id = ?",
-                    values,
-                )
-        except Exception as e:
-            logger.error(f"❌ sale_update_fields: {e}")
-        return self.sale_get(submission_id)
-
-    def sale_get(self, submission_id: str) -> Optional[Dict]:
-        """Возвращает заявку по ID или None."""
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT * FROM sales WHERE submission_id = ?", (submission_id,)
-                )
-                row = cursor.fetchone()
-                return self._deserialize_sale(dict(row)) if row else None
-        except Exception as e:
-            logger.error(f"❌ sale_get: {e}")
-            return None
-
-    def sale_get_all(self) -> List[Dict]:
-        """Возвращает все заявки, новые первыми."""
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT * FROM sales ORDER BY created_at DESC")
-                return [self._deserialize_sale(dict(r)) for r in cursor.fetchall()]
-        except Exception as e:
-            logger.error(f"❌ sale_get_all: {e}")
-            return []
-
-    @staticmethod
-    def _deserialize_sale(row: Dict) -> Dict:
-        """Десериализует JSON-поля заявки."""
-        for field, default in (("workflow", {}), ("items", [])):
-            if field in row and isinstance(row[field], str):
-                try:
-                    row[field] = json.loads(row[field])
-                except (json.JSONDecodeError, TypeError):
-                    row[field] = default
-        return row
 
 
 if __name__ == "__main__":

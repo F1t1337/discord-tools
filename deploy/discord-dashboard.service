@@ -1,0 +1,22 @@
+[Unit]
+Description=Discord Tools authenticated monitoring dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=discord-tools
+Group=discord-tools
+WorkingDirectory=/opt/discord-tools
+ExecStart=/opt/discord-tools/.venv/bin/python /opt/discord-tools/dashboard_api.py --config /opt/discord-tools/config.json
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/discord-tools/data
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

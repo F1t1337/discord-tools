@@ -11,3 +11,17 @@ logs/security/
 
 # Local secrets
 .env
+
+# Runtime data and credentials (already tracked files require separate cleanup)
+__pycache__/
+*.py[cod]
+.venv/
+*.log
+*.db
+*.db-wal
+*.db-shm
+*.backup_*
+data/credentials.json
+data/proxies.txt
+proxies.txt
+tokens.txt

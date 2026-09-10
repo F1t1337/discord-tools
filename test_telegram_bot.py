@@ -204,48 +204,6 @@ def test_new_purchase_notification():
     return success
 
 
-def test_tokens_batch():
-    """Тест 8: Отправка пакета токенов с информацией"""
-    print("\n" + "="*60)
-    print("ТЕСТ 8: Отправка пакета токенов")
-    print("="*60)
-    
-    bot = TelegramBot(bot_token=BOT_TOKEN, chat_id=CHAT_ID)
-    db = Database("test_tokens.db")
-    
-    # Получаем готовые токены из БД
-    ready_tokens = db.get_ready_tokens(limit=50)
-    
-    if not ready_tokens:
-        print("⚠️ Нет готовых токенов в БД")
-        print("Создаем тестовые токены...")
-        
-        # Создаем тестовые токены
-        for i in range(35):
-            token = f"BATCH.test.token_{i}_{int(time.time())}"
-            token_id = db.add_token(token, price=20.0 + (i % 10))
-            if token_id:
-                db.update_token_status(token, "ready", username=f"BatchUser{i}")
-        
-        ready_tokens = db.get_ready_tokens(limit=50)
-    
-    print(f"Найдено готовых токенов: {len(ready_tokens)}")
-    
-    if len(ready_tokens) >= 30:
-        print("Отправляем пакет токенов...")
-        
-        success = bot.send_tokens_batch(
-            tokens_data=ready_tokens,
-            min_tokens=30,
-            max_tokens=50
-        )
-        
-        if success:
-            print("✅ Пакет отправлен!")
-        else:
-            print("❌ Ошибка отправки")
-    else:
-        print(f"⚠️ Недостаточно токенов: {len(ready_tokens)}/30")
 
 
 def main():
@@ -298,8 +256,6 @@ def main():
         test_new_purchase_notification()
         time.sleep(2)
         
-        # Тест 8: Пакет токенов
-        test_tokens_batch()
         
         print("\n" + "="*60)
         print("✅ ВСЕ ТЕСТЫ ЗАВЕРШЕНЫ!")

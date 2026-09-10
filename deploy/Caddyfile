@@ -1,0 +1,8 @@
+# Replace this with the same hostname as DASHBOARD_PUBLIC_URL.
+panel.example.com {
+    encode zstd gzip
+    request_body {
+        max_size 16KB
+    }
+    reverse_proxy 127.0.0.1:5000
+}

@@ -4,10 +4,7 @@ import os
 import time
 import threading
 from queue import Queue
-from typing import Dict, List
-from datetime import datetime
-
-import concurrent.futures
+from typing import Dict
 
 from modules.lzt_monitor import LZTMonitor
 from modules.validator import TokenValidator
@@ -15,8 +12,6 @@ from modules.cleaner import process_token
 from modules.database import Database
 from modules.telegram_bot import TelegramBot
 from modules.cloudflare_helper import CloudflareHelper
-from modules.sales import SalesManager
-from modules.google_sheets import GoogleSheetsLogger
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +26,7 @@ class TokenPipeline:
     3. Cleaner -> Очистка токенов
     4. Validator #2 -> Финальная проверка
     5. Database -> Сохранение как 'ready'
-    6. Telegram -> РУЧНАЯ отправка по кнопке
+    6. Telegram -> Уведомление о готовности
     """
     
     def __init__(self, config: Dict, config_path: str = "config.json"):
@@ -94,21 +89,12 @@ class TokenPipeline:
         # Telegram Bot
         self.telegram = TelegramBot(
             bot_token=self.config['telegram']['bot_token'],
-            chat_id=self.config['telegram']['chat_id']
+            chat_id=self.config['telegram']['chat_id'],
+            allowed_user_ids=self.config['telegram'].get('allowed_user_ids'),
         )
         
         # Cloudflare Tunnel Helper
         self.cloudflare = CloudflareHelper()
-
-        # Google Sheets logger
-        self.sheets = GoogleSheetsLogger(self.config.get('google_sheets', {}))
-
-        # Sales
-        self.sales = SalesManager(
-            self.config.get('sales', {}),
-            sheets_logger=self.sheets,
-            db=self.db,
-        )
 
         logger.info("✅ Все модули инициализированы")
     
@@ -116,12 +102,9 @@ class TokenPipeline:
         """Регистрирует обработчики команд Telegram бота"""
         self.telegram.register_command_handler('stats', self._handle_stats_command)
         self.telegram.register_command_handler('balance', self._handle_balance_command)
-        self.telegram.register_command_handler('send_tokens', self._handle_send_tokens_command)
         self.telegram.register_command_handler('export_tokens', self._handle_export_tokens_command)
         self.telegram.register_command_handler('status', self._handle_status_command)
         self.telegram.register_command_handler('upload_tokens', self._handle_upload_tokens_command)
-        self.telegram.register_command_handler('sales_status', self._handle_sales_status_command)
-        self.telegram.register_command_handler('sales_cancel', self._handle_sales_cancel_command)
         self.telegram.register_command_handler('settings', self._handle_settings_command)
         self.telegram.register_command_handler('toggle_close_channels', self._handle_toggle_close_channels_command)
         self.telegram.register_command_handler('toggle_lzt', self._handle_toggle_lzt_command)
@@ -221,69 +204,7 @@ class TokenPipeline:
             logger.error(f"❌ Ошибка получения статистики продавцов: {e}")
             self.telegram.send_error("Sellers Statistics", str(e))
 
-    def _handle_sales_status_command(self, chat_id: str = None, message_id: int = None, payload: str = None):
-        """Показывает состояние безопасной локальной инфраструктуры продажи."""
-        try:
-            summary = self.sales.get_summary()
-            self.telegram.send_sales_status(summary, chat_id=chat_id, message_id=message_id)
-        except Exception as e:
-            logger.error(f"❌ Ошибка получения статуса продаж: {e}")
-            self.telegram.send_error("Sales Status", str(e))
 
-    def _handle_sales_cancel_command(self, chat_id: str = None, message_id: int = None, payload: str = None):
-        """Отменяет локальную sales-заявку и возвращает позиции в ready."""
-        try:
-            if not payload:
-                self.telegram.send_sale_action_result(
-                    "Не указана заявка",
-                    "Нужно выбрать заявку из меню продаж.",
-                    success=False,
-                    chat_id=chat_id,
-                    message_id=message_id,
-                )
-                return
-
-            result = self.sales.cancel_submission(payload)
-            if not result.get('ok'):
-                self.telegram.send_sale_action_result(
-                    "Не удалось отменить заявку",
-                    result.get('error', 'Неизвестная ошибка'),
-                    success=False,
-                    chat_id=chat_id,
-                    message_id=message_id,
-                )
-                return
-
-            submission = result['submission']
-            updated = self._set_submission_items_status(submission, 'ready')
-            self.ready_tokens_notification_sent = False
-
-            self.telegram.send_sale_action_result(
-                "Заявка отменена",
-                (
-                    f"<code>{payload}</code>\n\n"
-                    f"Позиции возвращены в готовые: <b>{updated}</b>."
-                ),
-                success=True,
-                chat_id=chat_id,
-                message_id=message_id,
-            )
-        except Exception as e:
-            logger.error(f"❌ Ошибка отмены sales-заявки: {e}")
-            self.telegram.send_error("Sales Cancel", str(e))
-
-    def _set_submission_items_status(self, submission: Dict, status: str) -> int:
-        """Обновляет статусы позиций заявки по внутренним ID без чтения токенов."""
-        updated = 0
-        for item in submission.get('items', []):
-            db_id = item.get('db_id')
-            if not db_id:
-                continue
-            if self.db.update_token_status_by_id(db_id, status=status):
-                updated += 1
-        return updated
-
-    
     def _handle_export_tokens_command(self, chat_id: str = None, message_id: int = None):
         """
         Прогоняет готовые токены через валидатор:
@@ -403,171 +324,8 @@ class TokenPipeline:
         except Exception as e:
             logger.error(f"❌ Ошибка получения баланса: {e}")
             self.telegram.send_error("Balance", str(e))
-    
-    def _handle_send_tokens_command(self, chat_id: str = None, message_id: int = None):
-        """Продажа готовых токенов через tskupka + tokenbuyrobot workflow."""
-        try:
-            ready_tokens = self.db.get_ready_tokens(limit=1000)
 
-            if not ready_tokens:
-                self.telegram.send_notification(
-                    title="⚠️ Нет готовых токенов",
-                    message="Нет токенов для продажи.",
-                    level="WARNING",
-                    chat_id=chat_id,
-                )
-                return
 
-            self.telegram.send_notification(
-                title="🔍 Проверка",
-                message=f"Проверяю {len(ready_tokens)} токенов...",
-                level="INFO",
-                chat_id=chat_id,
-            )
-
-            valid_tokens = []
-            valid_records = []
-            invalid_count = 0
-
-            for token_data in ready_tokens:
-                token = token_data['token']
-                is_valid, username = self.validator.validate_token(token)
-
-                if is_valid:
-                    valid_tokens.append(token)
-                    valid_records.append(token_data)
-                else:
-                    invalid_count += 1
-                    self.db.update_token_status(token=token, status='invalid',
-                                                error='Failed validation before send')
-                time.sleep(0.5)
-
-            if not valid_tokens:
-                self.telegram.send_notification(
-                    title="❌ Нет валидных токенов",
-                    message=f"Все {invalid_count} токенов невалидны.",
-                    level="ERROR",
-                    chat_id=chat_id,
-                )
-                return
-
-            if not self.sales.enabled:
-                self.telegram.send_notification(
-                    title="⚠️ Продажи выключены",
-                    message="Включите модуль продаж в config.json.",
-                    level="WARNING",
-                    chat_id=chat_id,
-                )
-                return
-
-            result = self.sales.create_submission(valid_records)
-            if not result.get('ok'):
-                self.telegram.send_error("Sales", result.get('error', 'Ошибка'))
-                return
-
-            for token in valid_tokens:
-                self.db.update_token_status(token=token, status='sale_pending')
-            self.ready_tokens_notification_sent = False
-
-            submission_id = result['submission_id']
-            msg = (
-                f"✅ <b>{result['accepted_count']}</b> токенов"
-            )
-            if invalid_count:
-                msg += f" (❌ {invalid_count} невалидных убрано)"
-            msg += "\n\nWorkflow: tskupka → tokenbuyrobot → завершение"
-
-            self.telegram.send_notification(
-                title="🧾 Заявка создана",
-                message=msg,
-                level="SUCCESS",
-                chat_id=chat_id,
-            )
-            self._start_sales_workflow(submission_id, chat_id)
-
-        except Exception as e:
-            logger.error(f"❌ Ошибка продажи токенов: {e}")
-            self.telegram.send_error("Send Tokens", str(e))
-
-    def _start_sales_workflow(self, submission_id: str, chat_id: str = None):
-        """Запускает долгий sales workflow в фоне, чтобы не блокировать Telegram."""
-        thread = threading.Thread(
-            target=self._sales_workflow_worker,
-            args=(submission_id, chat_id),
-            name=f"SalesWorkflow-{submission_id[-8:]}",
-            daemon=True,
-        )
-        thread.start()
-        self.threads.append(thread)
-
-    def _sales_workflow_worker(self, submission_id: str, chat_id: str = None):
-        poll_message_id = None
-
-        def notify(title: str, message: str, level: str):
-            nonlocal poll_message_id
-            emoji = {"INFO": "ℹ️", "WARNING": "⚠️", "ERROR": "❌",
-                     "SUCCESS": "✅", "POLL": "⏳"}.get(level, "📢")
-            text = f"{emoji} <b>{title}</b>\n\n<code>{submission_id}</code>\n\n{message}"
-            if level == "POLL":
-                if poll_message_id:
-                    self.telegram.edit_message(poll_message_id, text, chat_id=chat_id)
-                else:
-                    poll_message_id = self.telegram.send_message(text, chat_id=chat_id)
-            else:
-                poll_message_id = None
-                self.telegram.send_message(text, chat_id=chat_id)
-
-        result = self.sales.run_workflow(
-            submission_id,
-            notify_callback=notify,
-            re_clean_callback=self._reclean_tokens_sync,
-        )
-        if result.get('ok'):
-            submission = result.get('submission') or {}
-            updated = self._set_submission_items_status(submission, 'sent')
-            self.db.update_statistics(tokens_sent=updated)
-        else:
-            logger.error(f"❌ Sales workflow failed for {submission_id}: {result.get('error')}")
-
-    def _reclean_tokens_sync(self, tokens: list) -> int:
-        """
-        Синхронно повторно очищает токены прямо в потоке воркфлоу.
-        Мёртвые токены cleaner выбрасывает сам (safe_request с 3 попытками
-        по 10 сек каждая), так что внешний таймаут не нужен.
-        Возвращает количество обработанных токенов.
-        """
-        if not tokens:
-            return 0
-
-        from modules.cleaner import ProxyManager, DiscordAPI
-
-        class _NullTracker:
-            def add_token(self, *a, **kw): pass
-            def update_status(self, *a, **kw): pass
-            def mark_completed(self, *a, **kw): pass
-
-        tracker = _NullTracker()
-
-        proxy_manager = None
-        if self.config.get('proxy', {}).get('enabled'):
-            try:
-                proxy_manager = ProxyManager()
-            except Exception as e:
-                logger.warning("⚠️ [Reclean] Proxy недоступны: %s", e)
-
-        max_workers = min(len(tokens), self.config.get('cleaner', {}).get('max_workers', 5))
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [
-                executor.submit(process_token, DiscordAPI(proxy_manager, tracker), token, tracker,
-                                self.close_channels)
-                for token in tokens
-            ]
-            concurrent.futures.wait(futures)
-
-        logger.info("✅ [Reclean] Обработано %d токенов", len(tokens))
-        return len(tokens)
-    
     def _handle_check_valid_command(self, chat_id: str = None, message_id: int = None):
         """Проверка готовых токенов через обычный validator, удаляет невалидные"""
         try:
@@ -789,9 +547,8 @@ class TokenPipeline:
         try:
             ready_tokens = self.db.get_ready_tokens(limit=1000)
             count = len(ready_tokens)
-            min_required = self.config['telegram']['min_tokens']
             
-            self.telegram.send_ready_tokens_info(count, min_required, chat_id=chat_id, message_id=message_id)
+            self.telegram.send_ready_tokens_info(count, chat_id=chat_id, message_id=message_id)
         except Exception as e:
             logger.error(f"❌ Ошибка получения информации о токенах: {e}")
             self.telegram.send_error("Ready Tokens", str(e))
@@ -1208,8 +965,7 @@ class TokenPipeline:
                                 title="🎉 Готовые токены накоплены!",
                                 message=(
                                     f"Накоплено <b>{ready_count}</b> готовых токенов!\n\n"
-                                    f"Вы можете отправить их, нажав кнопку "
-                                    f"<b>'📦 Отправить токены'</b> в главном меню."
+                                    f"Состояние записей доступно в панели и меню статуса."
                                 ),
                                 level="SUCCESS"
                             )
@@ -1390,5 +1146,4 @@ class TokenPipeline:
                 for thread in self.threads
             },
             'counts': self.db.count_tokens_by_status(),
-            'sales': self.sales.get_summary(limit=3)
         }

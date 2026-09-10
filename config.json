@@ -5,13 +5,11 @@
     "min_balance_alert": 100.0,
     "enabled": true
   },
-  
   "validator": {
     "timeout": 10,
     "max_retries": 3,
     "max_workers": 20
   },
-  
   "cleaner": {
     "max_workers": 20,
     "max_messages_delete": 20,
@@ -19,63 +17,30 @@
     "min_delay": 0.8,
     "close_channels": true
   },
-  
   "telegram": {
     "bot_token": "${TELEGRAM_BOT_TOKEN}",
     "chat_id": "${TELEGRAM_CHAT_ID}",
-    "min_tokens": 30,
-    "max_tokens": 50,
-    "notification_threshold": 40
-    
+    "notification_threshold": 40,
+    "allowed_user_ids": "${TELEGRAM_ALLOWED_USER_IDS}"
   },
-  
   "database": {
     "path": "data/tokens.db"
   },
-  
   "proxy": {
     "enabled": true,
     "file": "data/proxies.txt"
   },
-  
   "logging": {
     "level": "INFO",
     "file": "data/logs/pipeline.log"
   },
-  
   "dashboard": {
     "enabled": true,
-    "host": "0.0.0.0",
-    "port": 5000
+    "host": "127.0.0.1",
+    "port": 5000,
+    "session_hours": 8
   },
-
-  "sales": {
-    "enabled": true,
-    "timeout": 20,
-    "providers": {
-      "tskupka": {
-        "api_key_env": "TSKUPKA_API_KEY"
-      },
-      "tokenbuyrobot": {
-        "api_key_env": "TOKENBUYROBOT_API_KEY"
-      }
-    },
-    "workflow": {
-      "price_initial_delay": 10,
-      "price_poll_interval": 10,
-      "completion_poll_interval": 30,
-      "completion_timeout": 3600
-    }
-  },
-
   "live_stats": {
     "enabled": true
-  },
-
-  "google_sheets": {
-    "enabled": false,
-    "credentials_path": "data/credentials.json",
-    "spreadsheet_id": "",
-    "sheet_name": "Sales"
   }
 }
