@@ -429,11 +429,18 @@ def report():
 # ==================== ПУЛ ПРОКСИ ====================
 
 def proxy_public_row(row):
-    """Публичное представление прокси для панели: host:port без учётных данных."""
+    """Публичное представление прокси для панели: scheme://host:port без учётных данных."""
+    from urllib.parse import urlsplit
     from modules.cleaner import parse_proxy
     parsed = parse_proxy(row['proxy'])
-    endpoint = (parsed.get('http') or '').replace('http://', '')
     has_auth = bool(parsed.get('auth'))
+    endpoint = ''
+    url = parsed.get('http')
+    if url:
+        # Собираем адрес из разобранных частей — учётные данные не попадают наружу.
+        bits = urlsplit(url)
+        if bits.hostname and bits.port:
+            endpoint = f"{bits.scheme}://{bits.hostname}:{bits.port}"
     if not endpoint:
         # Не удалось разобрать — не раскрываем возможные учётные данные
         endpoint = '[не распознан]'

@@ -155,26 +155,36 @@ def display_worker(progress_tracker: ProgressTracker, stop_event: threading.Even
         stop_event.wait(UPDATE_INTERVAL)
 
 
+# Поддерживаемые схемы прокси. socks5/socks5h/socks4 требуют пакета PySocks.
+SUPPORTED_PROXY_SCHEMES = ('socks5h', 'socks5', 'socks4', 'https', 'http')
+
+
 def parse_proxy(proxy_str: str) -> Dict:
     """Парсит строку прокси в словарь с параметрами.
 
     Поддерживаются форматы: host:port, host:port:login:password,
-    login:password@host:port, с необязательной схемой http(s)://.
+    login:password@host:port, с необязательной схемой
+    (http, https, socks5, socks5h, socks4). Без схемы подразумевается http.
 
     Учётные данные встраиваются прямо в URL прокси (в закодированном виде):
-    только так Proxy-Authorization доходит до CONNECT для HTTPS-целей.
+    только так авторизация доходит до CONNECT для HTTPS-целей и работает SOCKS.
     """
     proxy_dict = {
         "original": proxy_str,
         "http": None,
         "https": None,
         "auth": None,
+        "scheme": "http",
     }
 
     try:
         cleaned = proxy_str.strip()
+        scheme = "http"
         if '://' in cleaned:
-            cleaned = cleaned.split('://', 1)[1]
+            raw_scheme, cleaned = cleaned.split('://', 1)
+            raw_scheme = raw_scheme.lower()
+            if raw_scheme in SUPPORTED_PROXY_SCHEMES:
+                scheme = raw_scheme
 
         login = password = None
         if '@' in cleaned:
@@ -195,9 +205,10 @@ def parse_proxy(proxy_str: str) -> Dict:
                 credentials = f"{quote(login, safe='')}:{quote(password, safe='')}@"
             else:
                 credentials = ""
-            proxy_url = f"http://{credentials}{host}:{port}"
+            proxy_url = f"{scheme}://{credentials}{host}:{port}"
             proxy_dict['http'] = proxy_url
             proxy_dict['https'] = proxy_url
+            proxy_dict['scheme'] = scheme
 
     except Exception:
         pass
