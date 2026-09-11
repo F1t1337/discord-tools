@@ -1,0 +1,22 @@
+# Шаблон конфигурации Cloudflare Tunnel для панели.
+#
+# Скопируйте этот файл в каталог cloudflared (Windows:
+# C:\Users\<пользователь>\.cloudflared\config.yml) и подставьте свои значения.
+#
+# Как получить TUNNEL-ID и файл учётных данных:
+#   cloudflared tunnel login
+#   cloudflared tunnel create dstools        # выведет TUNNEL-ID и путь к <ID>.json
+#   cloudflared tunnel route dns dstools panel.dstools.top
+#
+# Туннель шифрует трафик между Cloudflare и сервером сам, поэтому открытые
+# порты и файлы сертификатов не нужны — HTTPS для браузера даёт Cloudflare.
+
+tunnel: ЗАМЕНИТЕ-НА-TUNNEL-ID
+credentials-file: C:\Users\ВАШ_ПОЛЬЗОВАТЕЛЬ\.cloudflared\ЗАМЕНИТЕ-НА-TUNNEL-ID.json
+
+ingress:
+  # Панель. hostname должен совпадать с DASHBOARD_PUBLIC_URL в .env.
+  - hostname: panel.dstools.top
+    service: http://127.0.0.1:5000
+  # Обязательное правило-заглушка в конце.
+  - service: http_status:404

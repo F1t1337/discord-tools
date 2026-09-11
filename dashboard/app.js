@@ -3,6 +3,7 @@ const $ = id => document.getElementById(id);
 const titles = {
   overview: ['Обзор', 'Текущее состояние системы и последние изменения.'],
   accounts: ['Аккаунты', 'Поиск и просмотр записей без раскрытия токенов доступа.'],
+  proxies: ['Прокси', 'Загрузка, проверка на живость и пул рабочих прокси.'],
   logs: ['Журнал событий', 'События приложения и диагностика сервера.'],
   settings: ['Настройки', 'Параметры доступа и текущая конфигурация сервера.'],
 };
@@ -126,11 +127,13 @@ async function loadView() {
       result = await Promise.all([api('/status', opts), api('/statistics/today', opts), api('/statistics/range?days=' + $('chart-days').value, opts)]);
     } else if (view === 'accounts') {
       result = await api('/accounts?' + new URLSearchParams({limit:pageSize, offset:accountOffset, status:$('account-status').value, search:$('account-search').value.trim()}), opts);
-    } else if (view === 'logs') result = await api('/logs?limit=100&level=' + $('log-level').value, opts);
+    } else if (view === 'proxies') result = await api('/proxies', opts);
+    else if (view === 'logs') result = await api('/logs?limit=100&level=' + $('log-level').value, opts);
     else result = await api('/settings', opts);
     if (generation !== requestGeneration || !loggedIn) return;
     if (view === 'overview') renderOverview(...result);
     else if (view === 'accounts') renderAccounts(result);
+    else if (view === 'proxies') renderProxies(result);
     else if (view === 'logs') renderLogs(result);
     else renderSettings(result);
     connection(true);
@@ -212,6 +215,62 @@ function renderAccounts(result) {
     const action=element('td'), button=element('button','↗','icon-button'); button.setAttribute('aria-label','Подробнее об аккаунте '+account.id); button.addEventListener('click',()=>showDetails(account)); action.append(button); row.append(action); return row;
   }));
 }
+function proxyStatusPill(status) {
+  const map = {alive: ['good', 'Живой'], dead: ['bad', 'Мёртвый'], unchecked: ['accent', 'Не проверен']};
+  const [cls, text] = map[status] || ['accent', status];
+  return element('span', text, 'status-pill ' + cls);
+}
+let proxyBusy = false;
+function renderProxies(result) {
+  const counts = result.counts || {};
+  const metrics = [
+    ['Рабочих', counts.alive || 0, 'Готовы к использованию', '✓'],
+    ['Мёртвых', counts.dead || 0, 'Не прошли проверку', '⊘'],
+    ['Не проверено', counts.unchecked || 0, 'Ожидают проверки', '…'],
+    ['Всего в пуле', counts.total || 0, 'Записей всего', '⇄'],
+  ];
+  $('proxy-metrics').replaceChildren(...metrics.map(([title, value, note, icon]) => {
+    const card = element('article', null, 'metric'), label = element('div', title, 'metric-label');
+    label.append(element('span', icon, 'metric-icon'));
+    card.append(label, element('p', number(value), 'metric-value'), element('p', note, 'metric-note'));
+    return card;
+  }));
+  const job = result.job || {};
+  proxyBusy = !!job.running;
+  const banner = $('proxy-job');
+  if (job.running) {
+    banner.hidden = false; banner.className = 'alert';
+    const kind = job.kind === 'recheck' ? 'Перепроверка пула' : 'Проверка новых прокси';
+    banner.textContent = kind + ': ' + number(job.done) + ' из ' + number(job.total) +
+      ' · живых ' + number(job.alive) + ', мёртвых ' + number(job.dead);
+  } else if (job.error) {
+    banner.hidden = false; banner.className = 'alert error';
+    banner.textContent = 'Проверка прервана из-за ошибки. Попробуйте ещё раз.';
+  } else if (job.finished_at) {
+    banner.hidden = false; banner.className = 'alert warning';
+    banner.textContent = 'Проверка завершена: обработано ' + number(job.total) +
+      ', живых ' + number(job.alive) + ', мёртвых ' + number(job.dead) + '.';
+  } else banner.hidden = true;
+  details('proxy-summary', [['Рабочих', number(counts.alive || 0)], ['Мёртвых', number(counts.dead || 0)],
+    ['Не проверено', number(counts.unchecked || 0)], ['Всего', number(counts.total || 0)],
+    ['Прокси в очистке', result.proxy_enabled ? 'Включены в конфиге' : 'Выключены']]);
+  for (const id of ['proxy-import', 'proxy-recheck', 'proxy-clear-dead', 'proxy-clear-all']) $(id).disabled = proxyBusy;
+  const items = result.items || [];
+  if (!items.length) return empty('proxies-body', 'Пул пуст', 'Добавьте прокси через форму слева.', 5);
+  $('proxies-body').replaceChildren(...items.map(item => {
+    const row = element('tr');
+    row.append(element('td', item.endpoint, 'mono'), element('td', item.auth ? 'логин/пароль' : 'нет'));
+    const status = element('td'); status.append(proxyStatusPill(item.status));
+    row.append(status, element('td', item.ping != null ? item.ping + ' мс' : '—', 'nowrap'),
+      element('td', item.last_checked_at ? date(item.last_checked_at) : '—', 'mono nowrap'));
+    return row;
+  }));
+}
+async function proxyAction(action) {
+  if (proxyBusy) return;
+  try { await action(); await loadView(); }
+  catch (error) { toast(error.message); }
+}
 function renderLogs(result) {
   if (!result.items.length) return empty('log-entries',result.available?'Событий не найдено':'Журнал ещё не создан',result.available?'Выберите другой уровень или дождитесь новых событий.':'Записи появятся после первого события приложения.');
   $('log-entries').replaceChildren(...result.items.map(item=>{
@@ -222,6 +281,11 @@ function renderLogs(result) {
 function renderSettings(result) {
   details('security-settings',[['Администратор',result.username],['Адрес панели',result.public_url],['HTTPS',result.https?'Включён':'Локальный HTTP'],['Срок сессии',result.session_hours+' ч'],['Telegram-владельцы',result.telegram_owners.join(', ')||'Не настроены']]);
   details('server-settings',[['Режим',result.monitoring_only?'Мониторинг БД':'Подключён к приложению'],['База данных',result.database_file],['Версия схемы',result.schema_version],['Получение с LZT',result.lzt_enabled?'Включено в конфиге':'Выключено'],['Закрытие чатов',result.close_channels?'Включено в конфиге':'Выключено'],['Потоки проверки',result.validator_workers],['Потоки очистки',result.cleaner_workers]]);
+  const input = $('cleaner-workers');
+  if (document.activeElement !== input) input.value = result.cleaner_workers;
+  $('cleaner-workers-note').textContent = result.monitoring_only
+    ? 'Рабочий процесс не подключён — изменение сохранится в конфиге и применится при следующем запуске.'
+    : 'Применяется на лету: потоки добавляются или завершаются после текущего токена.';
 }
 function confirmAction(title,text) {
   $('confirm-title').textContent=title; $('confirm-text').textContent=text;
@@ -255,6 +319,39 @@ $('download-report').addEventListener('click',async()=>{
     const blob=await api('/accounts/report.csv?'+params,{blob:true});
     const url=URL.createObjectURL(blob), link=element('a'); link.href=url; link.download='accounts-report.csv'; document.body.append(link); link.click(); link.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000); toast('Отчёт подготовлен');
   } catch(error){toast(error.message);} finally{button.disabled=false;}
+});
+$('proxy-import').addEventListener('click',async()=>{
+  if (proxyBusy) return;
+  const raw=$('proxy-input').value.trim();
+  if (!raw) return toast('Вставьте список прокси');
+  $('proxy-import').disabled=true;
+  try { const result=await api('/proxies/import',{method:'POST',body:JSON.stringify({proxies:raw})}); toast('Проверка запущена: '+result.queued+' прокси'); $('proxy-input').value=''; await loadView(); }
+  catch(error){toast(error.message);$('proxy-import').disabled=false;}
+});
+$('proxy-recheck').addEventListener('click',async()=>{
+  if (proxyBusy) return;
+  try { const result=await api('/proxies/recheck',{method:'POST',body:'{}'}); toast('Перепроверка запущена: '+result.queued); await loadView(); }
+  catch(error){toast(error.message);}
+});
+$('proxy-clear-dead').addEventListener('click',async()=>{
+  if (proxyBusy) return;
+  if (!await confirmAction('Удалить мёртвые прокси?','Из пула будут удалены все прокси со статусом «мёртвый».')) return;
+  try { const result=await api('/proxies/clear',{method:'POST',body:JSON.stringify({scope:'dead'})}); toast('Удалено: '+result.removed); await loadView(); }
+  catch(error){toast(error.message);}
+});
+$('proxy-clear-all').addEventListener('click',async()=>{
+  if (proxyBusy) return;
+  if (!await confirmAction('Очистить весь пул?','Все прокси будут удалены без возможности восстановления.')) return;
+  try { const result=await api('/proxies/clear',{method:'POST',body:JSON.stringify({scope:'all'})}); toast('Удалено: '+result.removed); await loadView(); }
+  catch(error){toast(error.message);}
+});
+$('cleaner-workers-apply').addEventListener('click',async()=>{
+  const value=parseInt($('cleaner-workers').value,10);
+  if (!Number.isInteger(value)||value<1||value>200) return toast('Введите число от 1 до 200');
+  $('cleaner-workers-apply').disabled=true;
+  try { const result=await api('/settings/cleaner-workers',{method:'POST',body:JSON.stringify({workers:value})}); toast(result.live?('Потоков очистки: '+result.workers):('Сохранено в конфиг: '+result.workers)); await loadView(); }
+  catch(error){toast(error.message);}
+  finally{$('cleaner-workers-apply').disabled=false;}
 });
 $('account-search').addEventListener('input',()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{accountOffset=0;loadView();},350);});
 $('account-status').addEventListener('change',()=>{accountOffset=0;loadView();});

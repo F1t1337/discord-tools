@@ -2,7 +2,7 @@
 panel.example.com {
     encode zstd gzip
     request_body {
-        max_size 16KB
+        max_size 1MB
     }
     reverse_proxy 127.0.0.1:5000
 }

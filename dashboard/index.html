@@ -39,6 +39,7 @@
       <nav aria-label="Основная навигация">
         <a href="#overview" data-view="overview"><span aria-hidden="true">◫</span>Обзор</a>
         <a href="#accounts" data-view="accounts"><span aria-hidden="true">▤</span>Аккаунты</a>
+        <a href="#proxies" data-view="proxies"><span aria-hidden="true">⇄</span>Прокси</a>
         <a href="#logs" data-view="logs"><span aria-hidden="true">≡</span>Журнал событий</a>
         <a href="#settings" data-view="settings"><span aria-hidden="true">⚙</span>Настройки</a>
       </nav>
@@ -73,13 +74,37 @@
         <p class="table-note">В панели и отчёте нет секретных токенов. CSV содержит до 10 000 записей с выбранными фильтрами.</p>
       </section>
 
+      <section id="view-proxies" class="view" aria-label="Прокси" hidden>
+        <div class="metrics" id="proxy-metrics"></div>
+        <div id="proxy-job" class="alert" role="status" hidden></div>
+        <div class="settings-grid">
+          <article class="panel">
+            <div class="panel-heading"><div><p class="section-label">ДОБАВИТЬ</p><h2>Загрузка прокси</h2></div></div>
+            <p class="muted">Вставьте список прокси — по одному в строке. Форматы: <code>host:port</code>, <code>host:port:login:password</code>, <code>login:password@host:port</code>.</p>
+            <textarea id="proxy-input" class="proxy-input" rows="8" placeholder="1.2.3.4:8080&#10;login:password@5.6.7.8:3128" maxlength="1000000"></textarea>
+            <div class="panel-action"><button id="proxy-import" class="button primary">Проверить и сохранить</button><p class="muted">Проверяются на живость; в пул попадают только рабочие прокси.</p></div>
+          </article>
+          <article class="panel">
+            <div class="panel-heading"><div><p class="section-label">ПУЛ</p><h2>Управление пулом</h2></div></div>
+            <dl id="proxy-summary" class="detail-list"></dl>
+            <div class="panel-action proxy-actions">
+              <button id="proxy-recheck" class="button secondary">Перепроверить пул</button>
+              <button id="proxy-clear-dead" class="button secondary">Удалить мёртвые</button>
+              <button id="proxy-clear-all" class="button danger">Очистить всё</button>
+            </div>
+            <p class="muted">При очистке каждому токену выдаётся отдельный прокси из этого пула.</p>
+          </article>
+        </div>
+        <div class="panel table-panel"><div class="table-overflow"><table><thead><tr><th>Прокси</th><th>Авторизация</th><th>Состояние</th><th>Пинг</th><th>Проверен</th></tr></thead><tbody id="proxies-body"></tbody></table></div></div>
+      </section>
+
       <section id="view-logs" class="view" aria-label="Журнал событий" hidden>
         <div class="toolbar"><div><h2>Последние события</h2><p class="muted">Последние 100 записей выбранного уровня</p></div><select id="log-level" aria-label="Уровень журнала"><option value="">Все уровни</option><option value="INFO">Информация</option><option value="WARNING">Предупреждения</option><option value="ERROR">Ошибки</option><option value="CRITICAL">Критические</option><option value="DEBUG">Отладка</option></select></div>
         <div class="panel log-panel" id="log-entries"></div>
       </section>
 
       <section id="view-settings" class="view" aria-label="Настройки" hidden>
-        <div class="settings-grid"><article class="panel"><div class="panel-heading"><div><p class="section-label">БЕЗОПАСНОСТЬ</p><h2>Доступ к панели</h2></div></div><dl id="security-settings" class="detail-list"></dl><div class="panel-action"><button id="revoke-sessions" class="button danger">Завершить все сессии</button><p class="muted">Включая текущую. После этого потребуется войти снова.</p></div></article><article class="panel"><div class="panel-heading"><div><p class="section-label">КОНФИГУРАЦИЯ</p><h2>Настройки сервера</h2></div></div><dl id="server-settings" class="detail-list"></dl><p class="settings-hint">Пароль и список владельцев задаются на сервере. После изменения перезапустите сервис.</p></article></div>
+        <div class="settings-grid"><article class="panel"><div class="panel-heading"><div><p class="section-label">БЕЗОПАСНОСТЬ</p><h2>Доступ к панели</h2></div></div><dl id="security-settings" class="detail-list"></dl><div class="panel-action"><button id="revoke-sessions" class="button danger">Завершить все сессии</button><p class="muted">Включая текущую. После этого потребуется войти снова.</p></div></article><article class="panel"><div class="panel-heading"><div><p class="section-label">КОНФИГУРАЦИЯ</p><h2>Настройки сервера</h2></div></div><dl id="server-settings" class="detail-list"></dl><p class="settings-hint">Пароль и список владельцев задаются на сервере. После изменения перезапустите сервис.</p></article><article class="panel"><div class="panel-heading"><div><p class="section-label">ОБРАБОТКА</p><h2>Потоки очистки</h2></div></div><p class="muted">Сколько токенов очищается одновременно. Каждому потоку выдаётся отдельный прокси из пула.</p><div class="worker-control"><label class="sr-only" for="cleaner-workers">Число потоков очистки</label><input id="cleaner-workers" type="number" min="1" max="200" step="1" inputmode="numeric"><button id="cleaner-workers-apply" class="button primary">Применить</button></div><p class="muted" id="cleaner-workers-note"></p></article></div>
       </section>
       <footer class="page-footer"><span>DISCORD TOOLS</span><span id="last-updated">Данные ещё не загружены</span></footer>
     </main>

@@ -64,7 +64,12 @@ class TokenPipeline:
         
         # Потоки для каждого этапа
         self.threads = []
-        
+
+        # Управление потоками очистки на лету
+        self._cleaner_lock = threading.Lock()
+        self._cleaner_workers = []  # список dict {thread, stop_event}
+        self.cleaner_target = max(1, int(config.get('cleaner', {}).get('max_workers', 5) or 1))
+
         logger.info("🚀 Pipeline инициализирован")
     
     def _init_modules(self):
@@ -95,6 +100,17 @@ class TokenPipeline:
         
         # Cloudflare Tunnel Helper
         self.cloudflare = CloudflareHelper()
+
+        # Общий менеджер прокси (пул живых прокси из БД). Каждому токену при
+        # очистке выдаётся выделенный прокси. Панель обновляет пул и вызывает reload().
+        self.proxy_manager = None
+        if self.config.get('proxy', {}).get('enabled'):
+            try:
+                from modules.cleaner import ProxyManager
+                self.proxy_manager = ProxyManager(db=self.db)
+                logger.info(f"🔐 Прокси включены, живых в пуле: {self.proxy_manager.count()}")
+            except Exception as e:
+                logger.warning(f"⚠️ Не удалось инициализировать пул прокси: {e}")
 
         logger.info("✅ Все модули инициализированы")
     
@@ -830,23 +846,22 @@ class TokenPipeline:
     
     # ==================== ЭТАП 3: ОЧИСТКА ====================
     
-    def _cleaning_worker(self):
-        """Поток очистки токенов"""
+    def _cleaning_worker(self, stop_event=None):
+        """Поток очистки токенов.
+
+        Args:
+            stop_event: событие остановки конкретного потока (для регулировки
+                        количества потоков очистки на лету).
+        """
         logger.info("🧹 [Cleaner] Запуск очистки...")
-        
+
         # Импортируем cleaner модуль
-        from modules.cleaner import ProxyManager, ProgressTracker, DiscordAPI, process_token
-        
-        # Создаем ProxyManager если включены прокси
-        proxy_manager = None
-        if self.config.get('proxy', {}).get('enabled'):
-            try:
-                proxy_manager = ProxyManager()
-                logger.info("🔐 [Cleaner] Прокси включены")
-            except Exception as e:
-                logger.warning(f"⚠️ [Cleaner] Прокси недоступны: {e}")
-        
-        while self.running:
+        from modules.cleaner import DiscordAPI, process_token
+
+        # Общий менеджер прокси на весь pipeline (по одному прокси на токен)
+        proxy_manager = self.proxy_manager
+
+        while self.running and (stop_event is None or not stop_event.is_set()):
             try:
                 # Получаем токен из очереди
                 purchase = self.validated_queue.get(timeout=1)
@@ -881,10 +896,13 @@ class TokenPipeline:
                         pass
                 
                 progress_tracker = DBProgressTracker(self.db, purchase['token'])
-                
+
+                # Выдаём этому токену выделенный прокси из пула
+                proxy_info = proxy_manager.acquire() if proxy_manager is not None else None
+
                 # Создаем API клиент
-                api = DiscordAPI(proxy_manager, progress_tracker)
-                
+                api = DiscordAPI(proxy_manager, progress_tracker, proxy_info=proxy_info)
+
                 # Запускаем очистку
                 process_token(api, purchase['token'], progress_tracker,
                               close_channels=self.close_channels)
@@ -1078,12 +1096,9 @@ class TokenPipeline:
             self.threads.append(thread)
         logger.info(f"▶️ Потоков запущено: Validator #1 x{validator_threads}")
         
-        # Несколько потоков для Cleaner
-        cleaner_threads = self.config.get('cleaner', {}).get('max_workers', 5)
-        for i in range(cleaner_threads):
-            thread = threading.Thread(target=self._cleaning_worker, name=f"Cleaner-{i+1}", daemon=True)
-            thread.start()
-            self.threads.append(thread)
+        # Несколько потоков для Cleaner (управляются на лету через set_cleaner_workers)
+        cleaner_threads = max(1, int(self.config.get('cleaner', {}).get('max_workers', 5) or 1))
+        self._spawn_cleaner_workers(cleaner_threads)
         logger.info(f"▶️ Потоков запущено: Cleaner x{cleaner_threads}")
         
         # Несколько потоков для Validator #2
@@ -1100,21 +1115,92 @@ class TokenPipeline:
         self.threads.append(thread)
         logger.info(f"▶️ Поток запущен: Statistics")
         
-        logger.info(f"✅ Pipeline запущен успешно! Всего потоков: {len(self.threads)}")
-    
+        logger.info(f"✅ Pipeline запущен успешно! Всего потоков: {len(self.threads) + len(self._cleaner_workers)}")
+
+    # ==================== УПРАВЛЕНИЕ ПОТОКАМИ ОЧИСТКИ ====================
+
+    def _spawn_cleaner_workers(self, count: int):
+        """Запускает `count` новых потоков очистки (под _cleaner_lock)."""
+        with self._cleaner_lock:
+            for _ in range(count):
+                index = len(self._cleaner_workers) + 1
+                stop_event = threading.Event()
+                thread = threading.Thread(
+                    target=self._cleaning_worker, args=(stop_event,),
+                    name=f"Cleaner-{index}", daemon=True)
+                thread.start()
+                self._cleaner_workers.append({'thread': thread, 'stop_event': stop_event})
+
+    def _prune_cleaner_workers(self):
+        """Убирает из списка уже завершившиеся потоки очистки (под _cleaner_lock)."""
+        self._cleaner_workers = [
+            worker for worker in self._cleaner_workers
+            if worker['thread'].is_alive() and not worker['stop_event'].is_set()
+        ]
+
+    def count_cleaner_workers(self) -> int:
+        """Возвращает число активных потоков очистки."""
+        with self._cleaner_lock:
+            return sum(1 for w in self._cleaner_workers
+                       if w['thread'].is_alive() and not w['stop_event'].is_set())
+
+    def set_cleaner_workers(self, count: int) -> int:
+        """
+        Регулирует число потоков очистки на лету.
+
+        Увеличение — запускает новые потоки; уменьшение — сигналит лишним потокам
+        завершиться после текущего токена. Значение сохраняется в config.json.
+
+        Returns:
+            Фактическое целевое число потоков.
+        """
+        count = max(1, min(200, int(count)))
+        with self._cleaner_lock:
+            self._prune_cleaner_workers()
+            current = len(self._cleaner_workers)
+            if self.running and count > current:
+                for _ in range(count - current):
+                    index = len(self._cleaner_workers) + 1
+                    stop_event = threading.Event()
+                    thread = threading.Thread(
+                        target=self._cleaning_worker, args=(stop_event,),
+                        name=f"Cleaner-{index}", daemon=True)
+                    thread.start()
+                    self._cleaner_workers.append({'thread': thread, 'stop_event': stop_event})
+            elif self.running and count < current:
+                # Ретайрим лишние потоки (последние в списке)
+                for worker in self._cleaner_workers[count:]:
+                    worker['stop_event'].set()
+                self._cleaner_workers = self._cleaner_workers[:count]
+            self.cleaner_target = count
+
+        self._persist_config_value('cleaner', 'max_workers', count)
+        logger.info(f"🧵 Число потоков очистки установлено: {count}")
+        return count
+
     def stop(self):
         """Останавливает pipeline"""
         if not self.running:
             logger.warning("⚠️ Pipeline не запущен")
             return
-        
+
         logger.info("⏹️ Остановка Pipeline...")
-        
+
         self.running = False
-        
+
         # Останавливаем Telegram polling
         self.telegram.stop_polling()
-        
+
+        # Останавливаем потоки очистки
+        with self._cleaner_lock:
+            cleaner_workers = list(self._cleaner_workers)
+            for worker in cleaner_workers:
+                worker['stop_event'].set()
+        for worker in cleaner_workers:
+            worker['thread'].join(timeout=5)
+        with self._cleaner_lock:
+            self._cleaner_workers = []
+
         # Ждем завершения потоков
         for thread in self.threads:
             thread.join(timeout=5)
@@ -1131,6 +1217,15 @@ class TokenPipeline:
         
         logger.info("✅ Pipeline остановлен")
     
+    def get_thread_states(self) -> Dict[str, bool]:
+        """Состояние всех рабочих потоков, включая потоки очистки."""
+        states = {thread.name: thread.is_alive() for thread in self.threads}
+        with self._cleaner_lock:
+            for worker in self._cleaner_workers:
+                states[worker['thread'].name] = (
+                    worker['thread'].is_alive() and not worker['stop_event'].is_set())
+        return states
+
     def get_status(self) -> Dict:
         """Возвращает статус pipeline"""
         return {
@@ -1141,9 +1236,6 @@ class TokenPipeline:
                 'cleaned': self.cleaned_queue.qsize(),
                 'ready': self.ready_queue.qsize()
             },
-            'threads': {
-                thread.name: thread.is_alive()
-                for thread in self.threads
-            },
+            'threads': self.get_thread_states(),
             'counts': self.db.count_tokens_by_status(),
         }

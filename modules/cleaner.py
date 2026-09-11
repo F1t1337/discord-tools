@@ -152,141 +152,198 @@ def display_worker(progress_tracker: ProgressTracker, stop_event: threading.Even
         stop_event.wait(UPDATE_INTERVAL)
 
 
-class ProxyManager:
-    def __init__(self):
-        self._valid_proxies = None
-        self.test_proxies_once()
+def parse_proxy(proxy_str: str) -> Dict:
+    """Парсит строку прокси в словарь с параметрами.
 
-    def load_proxies(self) -> List[str]:
-        """Загружает прокси из файла"""
-        try:
-            with open(PROXIES_FILE, "r") as f:
-                proxies = []
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith('#'):
-                        proxies.append(line)
-                return proxies
-        except Exception as e:
-            return []
+    Поддерживаются форматы: host:port, host:port:login:password,
+    login:password@host:port, с необязательной схемой http(s)://.
+    """
+    proxy_dict = {
+        "original": proxy_str,
+        "http": None,
+        "https": None,
+        "auth": None,
+    }
 
-    def parse_proxy(self, proxy_str: str) -> Dict:
-        """Парсит строку прокси в словарь с параметрами"""
-        proxy_dict = {
-            "original": proxy_str,
-            "http": None,
-            "https": None,
-            "auth": None
-        }
+    try:
+        cleaned = proxy_str.strip().replace('http://', '').replace('https://', '')
 
-        try:
-            proxy_str = proxy_str.replace('http://', '').replace('https://', '')
+        if '@' in cleaned:
+            auth_part, server_part = cleaned.split('@', 1)
+            if ':' in auth_part:
+                login, password = auth_part.split(':', 1)
+                proxy_dict['auth'] = (login, password)
 
-            if '@' in proxy_str:
-                auth_part, server_part = proxy_str.split('@', 1)
-                if ':' in auth_part:
-                    login, password = auth_part.split(':', 1)
-                    proxy_dict['auth'] = (login, password)
+            if ':' in server_part:
+                host, port = server_part.split(':', 1)
+                proxy_url = f"http://{host}:{port}"
+                proxy_dict['http'] = proxy_url
+                proxy_dict['https'] = proxy_url
+        else:
+            parts = cleaned.split(':')
+            if len(parts) == 2:
+                host, port = parts
+                proxy_url = f"http://{host}:{port}"
+                proxy_dict['http'] = proxy_url
+                proxy_dict['https'] = proxy_url
+            elif len(parts) == 4:
+                host, port, login, password = parts
+                proxy_dict['auth'] = (login, password)
+                proxy_url = f"http://{host}:{port}"
+                proxy_dict['http'] = proxy_url
+                proxy_dict['https'] = proxy_url
 
-                if ':' in server_part:
-                    host, port = server_part.split(':', 1)
-                    proxy_url = f"http://{host}:{port}"
-                    proxy_dict['http'] = proxy_url
-                    proxy_dict['https'] = proxy_url
-            else:
-                parts = proxy_str.split(':')
-                if len(parts) == 2:
-                    host, port = parts
-                    proxy_url = f"http://{host}:{port}"
-                    proxy_dict['http'] = proxy_url
-                    proxy_dict['https'] = proxy_url
-                elif len(parts) == 4:
-                    host, port, login, password = parts
-                    proxy_dict['auth'] = (login, password)
-                    proxy_url = f"http://{host}:{port}"
-                    proxy_dict['http'] = proxy_url
-                    proxy_dict['https'] = proxy_url
+    except Exception:
+        pass
 
-        except Exception:
-            pass
+    return proxy_dict
 
-        return proxy_dict
 
-    def test_proxy(self, proxy_dict: Dict) -> Tuple[bool, Optional[int]]:
-        """Тестирует прокси"""
-        proxies = {}
-        if proxy_dict['http']:
-            proxies = {"http": proxy_dict['http'], "https": proxy_dict['http']}
+def build_proxy_info(proxy_dict: Dict) -> Dict:
+    """Готовит структуру прокси для requests-сессии."""
+    proxies = {}
+    if proxy_dict.get('http'):
+        proxies = {"http": proxy_dict['http'], "https": proxy_dict['http']}
+    return {'proxies': proxies, 'auth': proxy_dict.get('auth')}
 
-        try:
-            start = time.time()
-            session = requests.Session()
-            session.headers.update({
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            })
 
-            if proxy_dict['auth']:
-                login, password = proxy_dict['auth']
-                auth_str = f"{login}:{password}"
-                encoded_auth = base64.b64encode(auth_str.encode()).decode()
-                session.headers['Proxy-Authorization'] = f'Basic {encoded_auth}'
-
-            response = session.get(
-                TEST_URL,
-                proxies=proxies,
-                timeout=5
-            )
-
-            if response.status_code == 200:
-                ping = int((time.time() - start) * 1000)
-                return True, ping
-
-        except:
-            pass
-
+def test_proxy(proxy_dict: Dict, timeout: int = 5) -> Tuple[bool, Optional[int]]:
+    """Проверяет прокси на живость запросом к Discord API. Возвращает (жив, пинг_мс)."""
+    proxies = {}
+    if proxy_dict.get('http'):
+        proxies = {"http": proxy_dict['http'], "https": proxy_dict['http']}
+    else:
         return False, None
 
-    def test_proxies_once(self):
-        """Тестирует все прокси один раз"""
-        if self._valid_proxies is not None:
-            return
+    try:
+        start = time.time()
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        })
 
-        proxy_strings = self.load_proxies()
-        if not proxy_strings:
-            self._valid_proxies = []
-            return
+        if proxy_dict.get('auth'):
+            login, password = proxy_dict['auth']
+            auth_str = f"{login}:{password}"
+            encoded_auth = base64.b64encode(auth_str.encode()).decode()
+            session.headers['Proxy-Authorization'] = f'Basic {encoded_auth}'
 
-        valid_proxies = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
-            futures = {executor.submit(self.test_proxy, self.parse_proxy(proxy)): proxy for proxy in proxy_strings}
-            for future in concurrent.futures.as_completed(futures):
-                proxy_str = futures[future]
+        response = session.get(TEST_URL, proxies=proxies, timeout=timeout)
+
+        if response.status_code == 200:
+            ping = int((time.time() - start) * 1000)
+            return True, ping
+
+    except Exception:
+        pass
+
+    return False, None
+
+
+def check_proxy_string(proxy_str: str, timeout: int = 5) -> Tuple[bool, Optional[int]]:
+    """Проверяет одну строку прокси."""
+    return test_proxy(parse_proxy(proxy_str), timeout=timeout)
+
+
+def check_proxy_list(proxy_strings, max_workers: int = 30, timeout: int = 5, on_result=None):
+    """Параллельно проверяет список прокси.
+
+    Args:
+        proxy_strings: список строк прокси
+        max_workers: число потоков проверки
+        timeout: таймаут одного запроса (секунды)
+        on_result: необязательный колбэк (proxy_str, alive, ping), вызывается по мере готовности
+
+    Returns:
+        Список кортежей (proxy_str, alive, ping)
+    """
+    proxy_strings = [p for p in (s.strip() for s in proxy_strings) if p]
+    results = []
+    if not proxy_strings:
+        return results
+    workers = max(1, min(max_workers, len(proxy_strings)))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(check_proxy_string, proxy, timeout): proxy for proxy in proxy_strings}
+        for future in concurrent.futures.as_completed(futures):
+            proxy_str = futures[future]
+            try:
+                alive, ping = future.result()
+            except Exception:
+                alive, ping = False, None
+            results.append((proxy_str, alive, ping))
+            if on_result is not None:
                 try:
-                    is_valid, ping = future.result()
-                    if is_valid:
-                        proxy_dict = self.parse_proxy(proxy_str)
-                        valid_proxies.append((proxy_dict, ping))
-                except:
+                    on_result(proxy_str, alive, ping)
+                except Exception:
                     pass
+    return results
 
-        valid_proxies.sort(key=lambda x: x[1])
-        self._valid_proxies = [p[0] for p in valid_proxies]
+
+class ProxyManager:
+    """Пул рабочих прокси.
+
+    В основном режиме читает живые прокси из базы данных (их проверяет панель).
+    При очистке каждому токену выдаётся выделенный прокси (round-robin по пулу).
+    Без базы данных (CLI-режим) прокси загружаются и проверяются из файла.
+    """
+
+    def __init__(self, db=None, proxies_file: str = None):
+        self.db = db
+        self.proxies_file = proxies_file or PROXIES_FILE
+        self._lock = threading.Lock()
+        self._proxies = []  # список разобранных прокси-словарей
+        self._cursor = 0
+        if db is not None:
+            self.reload()
+        else:
+            self._load_and_test_from_file()
+
+    def _load_file(self) -> List[str]:
+        try:
+            with open(self.proxies_file, "r") as f:
+                return [line.strip() for line in f if line.strip() and not line.strip().startswith('#')]
+        except Exception:
+            return []
+
+    def reload(self):
+        """Перечитывает пул живых прокси из базы данных."""
+        if self.db is None:
+            return
+        parsed = [parse_proxy(s) for s in self.db.list_alive_proxies()]
+        with self._lock:
+            self._proxies = [p for p in parsed if p.get('http')]
+            self._cursor = 0
+
+    def _load_and_test_from_file(self):
+        """CLI-режим: загружает прокси из файла и проверяет их один раз."""
+        alive = []
+        for proxy_str, ok, ping in check_proxy_list(self._load_file()):
+            if ok:
+                alive.append((parse_proxy(proxy_str), ping if ping is not None else 10 ** 9))
+        alive.sort(key=lambda item: item[1])
+        with self._lock:
+            self._proxies = [proxy for proxy, _ in alive if proxy.get('http')]
+            self._cursor = 0
+
+    def count(self) -> int:
+        with self._lock:
+            return len(self._proxies)
+
+    def acquire(self) -> Optional[Dict]:
+        """Выдаёт выделенный прокси для токена (по кругу по всему пулу)."""
+        with self._lock:
+            if not self._proxies:
+                return None
+            proxy = self._proxies[self._cursor % len(self._proxies)]
+            self._cursor += 1
+            return build_proxy_info(proxy)
 
     def get_random_proxy(self) -> Optional[Dict]:
-        """Возвращает случайный валидный прокси"""
-        if not self._valid_proxies:
-            return None
-
-        proxy_dict = random.choice(self._valid_proxies)
-        proxies = {}
-
-        if proxy_dict['http']:
-            proxies = {"http": proxy_dict['http'], "https": proxy_dict['http']}
-
-        return {
-            'proxies': proxies,
-            'auth': proxy_dict.get('auth')
-        }
+        """Возвращает случайный прокси из пула."""
+        with self._lock:
+            if not self._proxies:
+                return None
+            return build_proxy_info(random.choice(self._proxies))
 
 
 class RateLimiter:
@@ -330,10 +387,14 @@ class RateLimiter:
 
 
 class DiscordAPI:
-    def __init__(self, proxy_manager: ProxyManager, progress_tracker: ProgressTracker):
+    def __init__(self, proxy_manager: Optional[ProxyManager], progress_tracker: ProgressTracker,
+                 proxy_info: Optional[Dict] = None):
         self.rate_limiter = RateLimiter()
         self.proxy_manager = proxy_manager
         self.progress = progress_tracker
+        # Выделенный прокси токена: по одному прокси на токен на всё время очистки.
+        # Меняется только как запасной вариант, если прокси перестал отвечать.
+        self.proxy_info = proxy_info
 
     def create_session_with_proxy(self, proxy_info: Dict):
         """Создает сессию с настройками прокси"""
@@ -356,7 +417,10 @@ class DiscordAPI:
     def safe_request(self, method: str, url: str, headers: Dict, max_retries: int = 3) -> Optional[requests.Response]:
         for attempt in range(max_retries):
             self.rate_limiter.wait()
-            proxy_info = self.proxy_manager.get_random_proxy()
+            # Используем выделенный прокси токена; если его нет — берём любой из пула.
+            proxy_info = self.proxy_info
+            if proxy_info is None and self.proxy_manager is not None:
+                proxy_info = self.proxy_manager.get_random_proxy()
 
             try:
                 session = self.create_session_with_proxy(proxy_info)
@@ -383,6 +447,11 @@ class DiscordAPI:
                 return response
 
             except:
+                # Прокси не ответил — запасной вариант: пробуем следующий прокси из пула.
+                if self.proxy_manager is not None:
+                    fresh = self.proxy_manager.acquire()
+                    if fresh is not None:
+                        self.proxy_info = fresh
                 if attempt == max_retries - 1:
                     return None
                 time.sleep(2 ** attempt)

@@ -1,6 +1,7 @@
 import sqlite3
 import logging
 import threading
+import time
 from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime, date
@@ -8,7 +9,7 @@ from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 _SCHEMA_LOCK = threading.RLock()
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class Database:
@@ -133,6 +134,19 @@ class Database:
                     message TEXT NOT NULL
                 )
             """)
+
+            # Пул прокси: живые прокси используются при очистке (по одному на токен)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS proxies (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    proxy TEXT NOT NULL UNIQUE,
+                    status TEXT NOT NULL DEFAULT 'unchecked',
+                    ping INTEGER,
+                    last_checked_at REAL,
+                    created_at REAL NOT NULL,
+                    UNIQUE(proxy)
+                )
+            """)
             
             # Additive migration preserves IDs, statuses and existing rows.
             columns = {row['name'] for row in cursor.execute("PRAGMA table_info(tokens)")}
@@ -167,6 +181,7 @@ class Database:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_tokens_status ON tokens(status)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_tokens_created ON tokens(created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_proxies_status ON proxies(status)")
 
             cursor.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
@@ -394,7 +409,111 @@ class Database:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM tokens WHERE token = ?", (token,))
             logger.info(f"🗑️ Токен удален из БД")
-    
+
+    # ==================== ПУЛ ПРОКСИ ====================
+
+    def add_proxies(self, proxies: List[str]) -> int:
+        """
+        Добавляет прокси в пул со статусом 'unchecked' (если их ещё нет).
+
+        Args:
+            proxies: список строк прокси (оригинальный формат)
+
+        Returns:
+            Количество новых добавленных прокси
+        """
+        now = time.time()
+        added = 0
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            for proxy in proxies:
+                proxy = (proxy or '').strip()
+                if not proxy:
+                    continue
+                cursor.execute(
+                    "INSERT OR IGNORE INTO proxies (proxy, status, created_at) VALUES (?, 'unchecked', ?)",
+                    (proxy, now),
+                )
+                added += cursor.rowcount
+        return added
+
+    def set_proxy_result(self, proxy: str, is_alive: bool, ping: Optional[int] = None):
+        """Сохраняет результат проверки одного прокси."""
+        with self.get_connection() as conn:
+            conn.execute(
+                "UPDATE proxies SET status = ?, ping = ?, last_checked_at = ? WHERE proxy = ?",
+                ('alive' if is_alive else 'dead', ping if is_alive else None, time.time(), proxy),
+            )
+
+    def upsert_proxy_result(self, proxy: str, is_alive: bool, ping: Optional[int] = None):
+        """Добавляет прокси (если новый) и сразу записывает результат проверки."""
+        proxy = (proxy or '').strip()
+        if not proxy:
+            return
+        now = time.time()
+        with self.get_connection() as conn:
+            conn.execute(
+                """INSERT INTO proxies (proxy, status, ping, last_checked_at, created_at)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(proxy) DO UPDATE SET
+                       status = excluded.status,
+                       ping = excluded.ping,
+                       last_checked_at = excluded.last_checked_at""",
+                (proxy, 'alive' if is_alive else 'dead', ping if is_alive else None, now, now),
+            )
+
+    def list_proxies(self, status: Optional[str] = None) -> List[Dict]:
+        """Возвращает прокси из пула (по умолчанию все), отсортированные по пингу."""
+        with self.get_connection() as conn:
+            if status:
+                rows = conn.execute(
+                    "SELECT id, proxy, status, ping, last_checked_at, created_at "
+                    "FROM proxies WHERE status = ? "
+                    "ORDER BY (ping IS NULL), ping ASC, id ASC",
+                    (status,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT id, proxy, status, ping, last_checked_at, created_at "
+                    "FROM proxies ORDER BY (status != 'alive'), (ping IS NULL), ping ASC, id ASC"
+                ).fetchall()
+            return [dict(row) for row in rows]
+
+    def list_alive_proxies(self) -> List[str]:
+        """Возвращает строки живых прокси, отсортированные по пингу (лучшие первыми)."""
+        with self.get_connection() as conn:
+            rows = conn.execute(
+                "SELECT proxy FROM proxies WHERE status = 'alive' "
+                "ORDER BY (ping IS NULL), ping ASC, id ASC"
+            ).fetchall()
+            return [row['proxy'] for row in rows]
+
+    def count_proxies_by_status(self) -> Dict[str, int]:
+        """Подсчитывает прокси по статусам плюс total."""
+        with self.get_connection() as conn:
+            rows = conn.execute("SELECT status, COUNT(*) as count FROM proxies GROUP BY status").fetchall()
+        counts = {row['status']: row['count'] for row in rows}
+        counts['total'] = sum(counts.values())
+        return counts
+
+    def delete_proxies(self, scope: str = 'dead') -> int:
+        """
+        Удаляет прокси из пула.
+
+        Args:
+            scope: 'dead' — только мёртвые, 'all' — весь пул
+
+        Returns:
+            Количество удалённых строк
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            if scope == 'all':
+                cursor.execute("DELETE FROM proxies")
+            else:
+                cursor.execute("DELETE FROM proxies WHERE status = 'dead'")
+            return cursor.rowcount
+
     # ==================== СТАТИСТИКА ====================
     
     def update_statistics(self, tokens_bought: int = 0, tokens_valid: int = 0, 
