@@ -3,10 +3,10 @@ import time
 import random
 import concurrent.futures
 import logging
-import base64
 import os
 import threading
 from typing import List, Dict, Optional, Tuple
+from urllib.parse import quote
 
 # Конфигурация
 TOKENS_FILE = "tokens.txt"
@@ -17,6 +17,9 @@ BASE_DELAY = 1.0
 MIN_DELAY = 0.8
 TIMEOUT = 10
 TEST_URL = "https://discord.com/api/v9/users/@me"
+# Проверка живости прокси: неаутентифицированный эндпоинт Discord, отдаёт 200
+# без токена. /users/@me без токена возвращает 401, поэтому для теста он не годится.
+PROXY_TEST_URL = "https://discord.com/api/v9/gateway"
 UPDATE_INTERVAL = 0.5  # Интервал обновления дисплея (секунд)
 
 # Настройка логирования
@@ -157,6 +160,9 @@ def parse_proxy(proxy_str: str) -> Dict:
 
     Поддерживаются форматы: host:port, host:port:login:password,
     login:password@host:port, с необязательной схемой http(s)://.
+
+    Учётные данные встраиваются прямо в URL прокси (в закодированном виде):
+    только так Proxy-Authorization доходит до CONNECT для HTTPS-целей.
     """
     proxy_dict = {
         "original": proxy_str,
@@ -166,32 +172,32 @@ def parse_proxy(proxy_str: str) -> Dict:
     }
 
     try:
-        cleaned = proxy_str.strip().replace('http://', '').replace('https://', '')
+        cleaned = proxy_str.strip()
+        if '://' in cleaned:
+            cleaned = cleaned.split('://', 1)[1]
 
+        login = password = None
         if '@' in cleaned:
-            auth_part, server_part = cleaned.split('@', 1)
+            auth_part, server_part = cleaned.rsplit('@', 1)
             if ':' in auth_part:
                 login, password = auth_part.split(':', 1)
-                proxy_dict['auth'] = (login, password)
-
-            if ':' in server_part:
-                host, port = server_part.split(':', 1)
-                proxy_url = f"http://{host}:{port}"
-                proxy_dict['http'] = proxy_url
-                proxy_dict['https'] = proxy_url
         else:
+            server_part = cleaned
             parts = cleaned.split(':')
-            if len(parts) == 2:
-                host, port = parts
-                proxy_url = f"http://{host}:{port}"
-                proxy_dict['http'] = proxy_url
-                proxy_dict['https'] = proxy_url
-            elif len(parts) == 4:
+            if len(parts) == 4:
                 host, port, login, password = parts
+                server_part = f"{host}:{port}"
+
+        if ':' in server_part:
+            host, port = server_part.split(':', 1)
+            if login is not None and password is not None:
                 proxy_dict['auth'] = (login, password)
-                proxy_url = f"http://{host}:{port}"
-                proxy_dict['http'] = proxy_url
-                proxy_dict['https'] = proxy_url
+                credentials = f"{quote(login, safe='')}:{quote(password, safe='')}@"
+            else:
+                credentials = ""
+            proxy_url = f"http://{credentials}{host}:{port}"
+            proxy_dict['http'] = proxy_url
+            proxy_dict['https'] = proxy_url
 
     except Exception:
         pass
@@ -200,18 +206,23 @@ def parse_proxy(proxy_str: str) -> Dict:
 
 
 def build_proxy_info(proxy_dict: Dict) -> Dict:
-    """Готовит структуру прокси для requests-сессии."""
+    """Готовит структуру прокси для requests-сессии (учётные данные уже в URL)."""
     proxies = {}
     if proxy_dict.get('http'):
-        proxies = {"http": proxy_dict['http'], "https": proxy_dict['http']}
+        proxies = {"http": proxy_dict['http'], "https": proxy_dict['https']}
     return {'proxies': proxies, 'auth': proxy_dict.get('auth')}
 
 
-def test_proxy(proxy_dict: Dict, timeout: int = 5) -> Tuple[bool, Optional[int]]:
-    """Проверяет прокси на живость запросом к Discord API. Возвращает (жив, пинг_мс)."""
+def test_proxy(proxy_dict: Dict, timeout: int = 8) -> Tuple[bool, Optional[int]]:
+    """Проверяет прокси на живость запросом к Discord API. Возвращает (жив, пинг_мс).
+
+    Используется неаутентифицированный эндпоинт Discord (отдаёт 200 без токена),
+    так что рабочий прокси, который доходит до Discord, помечается живым.
+    Учётные данные прокси уже встроены в URL, отдельный заголовок не нужен.
+    """
     proxies = {}
     if proxy_dict.get('http'):
-        proxies = {"http": proxy_dict['http'], "https": proxy_dict['http']}
+        proxies = {"http": proxy_dict['http'], "https": proxy_dict['https']}
     else:
         return False, None
 
@@ -222,13 +233,7 @@ def test_proxy(proxy_dict: Dict, timeout: int = 5) -> Tuple[bool, Optional[int]]
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         })
 
-        if proxy_dict.get('auth'):
-            login, password = proxy_dict['auth']
-            auth_str = f"{login}:{password}"
-            encoded_auth = base64.b64encode(auth_str.encode()).decode()
-            session.headers['Proxy-Authorization'] = f'Basic {encoded_auth}'
-
-        response = session.get(TEST_URL, proxies=proxies, timeout=timeout)
+        response = session.get(PROXY_TEST_URL, proxies=proxies, timeout=timeout)
 
         if response.status_code == 200:
             ping = int((time.time() - start) * 1000)
@@ -240,12 +245,12 @@ def test_proxy(proxy_dict: Dict, timeout: int = 5) -> Tuple[bool, Optional[int]]
     return False, None
 
 
-def check_proxy_string(proxy_str: str, timeout: int = 5) -> Tuple[bool, Optional[int]]:
+def check_proxy_string(proxy_str: str, timeout: int = 8) -> Tuple[bool, Optional[int]]:
     """Проверяет одну строку прокси."""
     return test_proxy(parse_proxy(proxy_str), timeout=timeout)
 
 
-def check_proxy_list(proxy_strings, max_workers: int = 30, timeout: int = 5, on_result=None):
+def check_proxy_list(proxy_strings, max_workers: int = 30, timeout: int = 8, on_result=None):
     """Параллельно проверяет список прокси.
 
     Args:
@@ -397,20 +402,14 @@ class DiscordAPI:
         self.proxy_info = proxy_info
 
     def create_session_with_proxy(self, proxy_info: Dict):
-        """Создает сессию с настройками прокси"""
+        """Создает сессию с настройками прокси (учётные данные уже в URL прокси)."""
         session = requests.Session()
         session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         })
 
-        if proxy_info and 'proxies' in proxy_info:
+        if proxy_info and proxy_info.get('proxies'):
             session.proxies = proxy_info['proxies']
-
-            if proxy_info.get('auth'):
-                login, password = proxy_info['auth']
-                auth_str = f"{login}:{password}"
-                encoded_auth = base64.b64encode(auth_str.encode()).decode()
-                session.headers['Proxy-Authorization'] = f'Basic {encoded_auth}'
 
         return session
 

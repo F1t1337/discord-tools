@@ -486,7 +486,7 @@ def start_proxy_job(kind, proxy_strings):
                 proxy_job['done'] += 1
                 proxy_job['alive' if alive else 'dead'] += 1
         try:
-            check_proxy_list(proxy_strings, max_workers=40, timeout=6, on_result=on_result)
+            check_proxy_list(proxy_strings, max_workers=40, timeout=8, on_result=on_result)
         except Exception as exc:
             with proxy_job_lock:
                 proxy_job['error'] = type(exc).__name__
