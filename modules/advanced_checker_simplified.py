@@ -3,7 +3,7 @@
 Проверяет только: валидность и проспам/непроспам
 НЕ УДАЛЯЕТ токены - только предоставляет информацию
 """
-import requests
+from modules.discord_transport import DiscordTransport
 import time
 from typing import List, Dict, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -26,21 +26,18 @@ class SimpleDiscordChecker:
         'verification',
     ]
     
-    def __init__(self, threads: int = 10):
+    def __init__(self, threads: int = 10, transport=None):
         self.threads = threads
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        })
+        self.transport = transport or DiscordTransport(None)
     
     def check_token_validity(self, token: str) -> tuple[bool, Optional[Dict]]:
         """Проверяет валидность токена и возвращает данные пользователя"""
         try:
             headers = {'Authorization': token}
-            response = self.session.get(
+            response = self.transport.request(token, 'GET',
                 'https://discord.com/api/v9/users/@me', 
                 headers=headers, 
-                timeout=10
+                timeout=10, stage='checker'
             )
             
             if response.status_code == 200:
@@ -54,10 +51,10 @@ class SimpleDiscordChecker:
         """Получает список DM каналов"""
         try:
             headers = {'Authorization': token}
-            response = self.session.get(
+            response = self.transport.request(token, 'GET',
                 'https://discord.com/api/v9/users/@me/channels', 
                 headers=headers, 
-                timeout=10
+                timeout=10, stage='checker'
             )
             
             if response.status_code == 200:
@@ -85,10 +82,10 @@ class SimpleDiscordChecker:
         """Получает последние сообщения из канала"""
         try:
             headers = {'Authorization': token}
-            response = self.session.get(
+            response = self.transport.request(token, 'GET',
                 f'https://discord.com/api/v9/channels/{channel_id}/messages?limit={limit}',
                 headers=headers,
-                timeout=10
+                timeout=10, stage='checker'
             )
             
             if response.status_code == 200:

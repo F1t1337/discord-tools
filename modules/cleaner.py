@@ -1,4 +1,5 @@
 import requests
+from modules.discord_transport import DiscordTransport, ProxyUnavailable, DiscordUnavailable, account_key
 import time
 import random
 import concurrent.futures
@@ -6,7 +7,7 @@ import logging
 import os
 import threading
 from typing import List, Dict, Optional, Tuple
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit, unquote
 
 # Конфигурация
 TOKENS_FILE = "tokens.txt"
@@ -22,14 +23,7 @@ TEST_URL = "https://discord.com/api/v9/users/@me"
 PROXY_TEST_URL = "https://discord.com/api/v9/gateway"
 UPDATE_INTERVAL = 0.5  # Интервал обновления дисплея (секунд)
 
-# Настройка логирования
-logging.basicConfig(
-    level=logging.WARNING,
-    format="%(message)s",
-    handlers=[
-        logging.FileHandler("discord_cleaner.log", encoding='utf-8'),
-    ]
-)
+# При импорте обработчики настраивает вызывающее приложение.
 logger = logging.getLogger(__name__)
 
 
@@ -156,7 +150,7 @@ def display_worker(progress_tracker: ProgressTracker, stop_event: threading.Even
 
 
 # Поддерживаемые схемы прокси. socks5/socks5h/socks4 требуют пакета PySocks.
-SUPPORTED_PROXY_SCHEMES = ('socks5h', 'socks5', 'socks4', 'https', 'http')
+SUPPORTED_PROXY_SCHEMES = ('socks5h', 'socks5', 'socks4a', 'socks4', 'https', 'http')
 
 
 def parse_proxy(proxy_str: str) -> Dict:
@@ -183,9 +177,11 @@ def parse_proxy(proxy_str: str) -> Dict:
         if '://' in cleaned:
             raw_scheme, cleaned = cleaned.split('://', 1)
             raw_scheme = raw_scheme.lower()
-            if raw_scheme in SUPPORTED_PROXY_SCHEMES:
-                scheme = raw_scheme
+            if raw_scheme not in SUPPORTED_PROXY_SCHEMES:
+                return proxy_dict
+            scheme = raw_scheme
 
+        scheme = {'socks5': 'socks5h', 'socks4': 'socks4a'}.get(scheme, scheme)
         login = password = None
         if '@' in cleaned:
             auth_part, server_part = cleaned.rsplit('@', 1)
@@ -199,8 +195,13 @@ def parse_proxy(proxy_str: str) -> Dict:
                 server_part = f"{host}:{port}"
 
         if ':' in server_part:
-            host, port = server_part.split(':', 1)
+            endpoint = urlsplit(f'{scheme}://{server_part}')
+            host, port = endpoint.hostname, endpoint.port
+            if not host or not port or endpoint.path or endpoint.query or endpoint.fragment:
+                return proxy_dict
+            host = f'[{host}]' if ':' in host else host.lower()
             if login is not None and password is not None:
+                login, password = unquote(login), unquote(password)
                 proxy_dict['auth'] = (login, password)
                 credentials = f"{quote(login, safe='')}:{quote(password, safe='')}@"
             else:
@@ -240,11 +241,15 @@ def test_proxy(proxy_dict: Dict, timeout: int = 8) -> Tuple[bool, Optional[int]]
     try:
         start = time.time()
         session = requests.Session()
+        session.trust_env = False
         session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         })
 
-        response = session.get(PROXY_TEST_URL, proxies=proxies, timeout=timeout)
+        try:
+            response = session.get(PROXY_TEST_URL, proxies=proxies, timeout=timeout, allow_redirects=False)
+        finally:
+            session.close()
 
         if response.status_code == 200:
             ping = int((time.time() - start) * 1000)
@@ -299,7 +304,7 @@ class ProxyManager:
     """Пул рабочих прокси.
 
     В основном режиме читает живые прокси из базы данных (их проверяет панель).
-    При очистке каждому токену выдаётся выделенный прокси (round-robin по пулу).
+    За каждой записью аккаунта закрепляется уникальный прокси без ротации.
     Без базы данных (CLI-режим) прокси загружаются и проверяются из файла.
     """
 
@@ -308,7 +313,7 @@ class ProxyManager:
         self.proxies_file = proxies_file or PROXIES_FILE
         self._lock = threading.Lock()
         self._proxies = []  # список разобранных прокси-словарей
-        self._cursor = 0
+        self._bindings = {}
         if db is not None:
             self.reload()
         else:
@@ -328,7 +333,6 @@ class ProxyManager:
         parsed = [parse_proxy(s) for s in self.db.list_alive_proxies()]
         with self._lock:
             self._proxies = [p for p in parsed if p.get('http')]
-            self._cursor = 0
 
     def _load_and_test_from_file(self):
         """CLI-режим: загружает прокси из файла и проверяет их один раз."""
@@ -339,27 +343,35 @@ class ProxyManager:
         alive.sort(key=lambda item: item[1])
         with self._lock:
             self._proxies = [proxy for proxy, _ in alive if proxy.get('http')]
-            self._cursor = 0
 
     def count(self) -> int:
         with self._lock:
             return len(self._proxies)
 
-    def acquire(self) -> Optional[Dict]:
-        """Выдаёт выделенный прокси для токена (по кругу по всему пулу)."""
-        with self._lock:
-            if not self._proxies:
-                return None
-            proxy = self._proxies[self._cursor % len(self._proxies)]
-            self._cursor += 1
-            return build_proxy_info(proxy)
+    def acquire(self, token: str) -> Optional[Dict]:
+        """The same account keeps one unique proxy across every processing stage."""
+        key = account_key(token)
+        if self.db is not None:
+            # Read health every time; deleting/rechecking the pool cannot enable direct access.
+            candidates = []
+            for raw in self.db.list_alive_proxies():
+                parsed = parse_proxy(raw)
+                url = parsed.get('https')
+                if url:
+                    candidates.append((account_key(url), url))
+            url = self.db.bind_account_proxy(token, key, candidates)
+        else:
+            with self._lock:
+                url = self._bindings.get(key)
+                if url is None:
+                    used = set(self._bindings.values())
+                    url = next((p['https'] for p in self._proxies if p['https'] not in used), None)
+                    if url is not None:
+                        self._bindings[key] = url
+        if url is None:
+            return None
+        return {'proxies': {'http': url, 'https': url}}
 
-    def get_random_proxy(self) -> Optional[Dict]:
-        """Возвращает случайный прокси из пула."""
-        with self._lock:
-            if not self._proxies:
-                return None
-            return build_proxy_info(random.choice(self._proxies))
 
 
 class RateLimiter:
@@ -404,69 +416,25 @@ class RateLimiter:
 
 class DiscordAPI:
     def __init__(self, proxy_manager: Optional[ProxyManager], progress_tracker: ProgressTracker,
-                 proxy_info: Optional[Dict] = None):
+                 proxy_info: Optional[Dict] = None, transport=None):
         self.rate_limiter = RateLimiter()
         self.proxy_manager = proxy_manager
         self.progress = progress_tracker
-        # Выделенный прокси токена: по одному прокси на токен на всё время очистки.
-        # Меняется только как запасной вариант, если прокси перестал отвечать.
-        self.proxy_info = proxy_info
-
-    def create_session_with_proxy(self, proxy_info: Dict):
-        """Создает сессию с настройками прокси (учётные данные уже в URL прокси)."""
-        session = requests.Session()
-        session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        })
-
-        if proxy_info and proxy_info.get('proxies'):
-            session.proxies = proxy_info['proxies']
-
-        return session
+        self.transport = transport or DiscordTransport(proxy_manager)
+        self.request_failed = False
 
     def safe_request(self, method: str, url: str, headers: Dict, max_retries: int = 3) -> Optional[requests.Response]:
-        for attempt in range(max_retries):
-            self.rate_limiter.wait()
-            # Используем выделенный прокси токена; если его нет — берём любой из пула.
-            proxy_info = self.proxy_info
-            if proxy_info is None and self.proxy_manager is not None:
-                proxy_info = self.proxy_manager.get_random_proxy()
-
-            try:
-                session = self.create_session_with_proxy(proxy_info)
-
-                response = session.request(
-                    method,
-                    url,
-                    headers=headers,
-                    timeout=TIMEOUT
-                )
-
-                self.rate_limiter.update_from_headers(response.headers)
-
-                if response.status_code == 429:
-                    try:
-                        data = response.json()
-                        retry_after = float(data.get('retry_after', random.uniform(1, 3)))
-                        time.sleep(retry_after + 0.1)
-                        continue
-                    except:
-                        time.sleep(random.uniform(2, 5))
-                        continue
-
-                return response
-
-            except:
-                # Прокси не ответил — запасной вариант: пробуем следующий прокси из пула.
-                if self.proxy_manager is not None:
-                    fresh = self.proxy_manager.acquire()
-                    if fresh is not None:
-                        self.proxy_info = fresh
-                if attempt == max_retries - 1:
-                    return None
-                time.sleep(2 ** attempt)
-
-        return None
+        try:
+            response = self.transport.request(headers.get('Authorization', ''), method, url,
+                headers=headers, timeout=TIMEOUT, max_retries=max_retries, stage='cleaner',
+                before_request=self.rate_limiter.wait)
+            self.rate_limiter.update_from_headers(response.headers)
+            if response.status_code >= 500:
+                self.request_failed = True
+            return response
+        except (ProxyUnavailable, DiscordUnavailable):
+            self.request_failed = True
+            return None
 
 
 def check_message_has_links_or_attachments(msg: Dict) -> bool:
@@ -697,6 +665,11 @@ def process_token(api: DiscordAPI, token: str, progress_tracker: ProgressTracker
 
 
 def main():
+    logging.basicConfig(
+        level=logging.WARNING,
+        format="%(message)s",
+        handlers=[logging.FileHandler("discord_cleaner.log", encoding='utf-8')],
+    )
     # Загружаем токены
     try:
         with open(TOKENS_FILE, "r") as f:

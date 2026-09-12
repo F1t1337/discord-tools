@@ -9,7 +9,7 @@ from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 _SCHEMA_LOCK = threading.RLock()
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 4
 
 
 class Database:
@@ -148,6 +148,29 @@ class Database:
                 )
             """)
             
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS export_batches (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at REAL NOT NULL,
+                    delivery TEXT NOT NULL DEFAULT 'pending'
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS export_items (
+                    batch_id INTEGER NOT NULL,
+                    token TEXT NOT NULL,
+                    PRIMARY KEY (batch_id, token)
+                )
+            """)
+
+            cursor.execute('''CREATE TABLE IF NOT EXISTS proxy_bindings (
+                account_hash TEXT PRIMARY KEY,
+                account_id INTEGER,
+                proxy_key TEXT NOT NULL UNIQUE,
+                proxy_url TEXT NOT NULL,
+                created_at REAL NOT NULL
+            )''')
+
             # Additive migration preserves IDs, statuses and existing rows.
             columns = {row['name'] for row in cursor.execute("PRAGMA table_info(tokens)")}
             additions = {
@@ -389,6 +412,82 @@ class Database:
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
     
+    def commit_export(self, valid_tokens, invalid_tokens):
+        """Persist the downloadable snapshot and status changes in one transaction.
+
+        Only records still ready are claimed. A crash or write error rolls back
+        the entire batch; a completed batch survives delivery errors/restarts.
+        """
+        with self.get_connection() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            batch_id, saved, invalid_count = None, [], 0
+            now = time.time()
+            for token in dict.fromkeys(valid_tokens):
+                changed = conn.execute(
+                    "UPDATE tokens SET status='sent', sent_at=?, error=NULL "
+                    "WHERE token=? AND status='ready'", (now, token)).rowcount
+                if not changed:
+                    continue
+                if batch_id is None:
+                    batch_id = conn.execute(
+                        'INSERT INTO export_batches(created_at) VALUES (?)', (now,)).lastrowid
+                conn.execute('INSERT INTO export_items(batch_id, token) VALUES (?, ?)',
+                             (batch_id, token))
+                saved.append(token)
+            for token in dict.fromkeys(invalid_tokens):
+                invalid_count += conn.execute(
+                    "UPDATE tokens SET status='invalid', error='Failed validation on export' "
+                    "WHERE token=? AND status='ready'", (token,)).rowcount
+            if saved:
+                conn.execute("""INSERT INTO statistics(date, tokens_sent) VALUES (?, ?)
+                    ON CONFLICT(date) DO UPDATE SET tokens_sent=tokens_sent+excluded.tokens_sent
+                    """, (date.today().isoformat(), len(saved)))
+        return {'export_id': batch_id, 'valid_tokens': saved, 'invalid': invalid_count}
+
+    def set_export_delivery(self, batch_id, delivery):
+        if delivery not in {'sent', 'failed'}:
+            raise ValueError('Invalid delivery state')
+        with self.get_connection() as conn:
+            conn.execute('UPDATE export_batches SET delivery=? WHERE id=?', (delivery, batch_id))
+
+    def list_exports(self, limit=100):
+        with self.get_connection() as conn:
+            rows = conn.execute('''SELECT b.id, b.created_at, b.delivery, COUNT(*) AS count
+                FROM export_batches b JOIN export_items i ON i.batch_id=b.id
+                GROUP BY b.id ORDER BY b.id DESC LIMIT ?''', (limit,)).fetchall()
+            return [dict(row) for row in rows]
+
+    def get_export_tokens(self, batch_id=None):
+        with self.get_connection() as conn:
+            if batch_id is None:
+                row = conn.execute('SELECT MAX(id) FROM export_batches').fetchone()
+                batch_id = row[0]
+            return [row['token'] for row in conn.execute(
+                'SELECT token FROM export_items WHERE batch_id=? ORDER BY rowid', (batch_id,))]
+
+    def bind_account_proxy(self, token, account_hash, candidates):
+        """Reserve a unique proxy permanently; an unavailable binding never rotates."""
+        with self.get_connection() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            existing = conn.execute('SELECT proxy_key FROM proxy_bindings WHERE account_hash=?',
+                                    (account_hash,)).fetchone()
+            available = dict(candidates)
+            if existing is not None:
+                return available.get(existing['proxy_key'])
+            used = {row['proxy_key'] for row in conn.execute('SELECT proxy_key FROM proxy_bindings')}
+            for key, url in candidates:
+                if key in used:
+                    continue
+                record = conn.execute('SELECT id FROM tokens WHERE token=?', (token,)).fetchone()
+                conn.execute('INSERT INTO proxy_bindings VALUES (?, ?, ?, ?, ?)',
+                             (account_hash, record['id'] if record else None, key, url, time.time()))
+                return url
+        return None
+
+    def proxy_bindings(self):
+        with self.get_connection() as conn:
+            return [dict(row) for row in conn.execute('SELECT * FROM proxy_bindings ORDER BY created_at DESC')]
+
     def count_tokens_by_status(self) -> Dict[str, int]:
         """
         Подсчитывает количество токенов по статусам

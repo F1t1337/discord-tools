@@ -4,6 +4,7 @@ const titles = {
   overview: ['Обзор', 'Текущее состояние системы и последние изменения.'],
   accounts: ['Аккаунты', 'Поиск и просмотр записей без раскрытия токенов доступа.'],
   tokens: ['Токены', 'Загрузка токенов в обработку и выгрузка готовых.'],
+  network: ['Сеть и лимиты', 'Закрепление прокси и ответы Discord за последние 1 и 5 минут.'],
   proxies: ['Прокси', 'Загрузка, проверка на живость и пул рабочих прокси.'],
   logs: ['Журнал событий', 'События приложения и диагностика сервера.'],
   settings: ['Настройки', 'Параметры доступа и текущая конфигурация сервера.'],
@@ -75,7 +76,7 @@ async function api(path, options = {}) {
 function showLogin(message = '') {
   loggedIn = false; clearTimeout(pollTimer); viewController?.abort();
   $('workspace').hidden = true; $('boot-screen').hidden = true; $('login-screen').hidden = false;
-  $('login-error').textContent = message; $('password').value = '';
+  $('login-error').textContent = message; $('password').value = ''; $('token-input').value = '';
   document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
 }
 function showWorkspace(username) {
@@ -129,6 +130,7 @@ async function loadView() {
     } else if (view === 'accounts') {
       result = await api('/accounts?' + new URLSearchParams({limit:pageSize, offset:accountOffset, status:$('account-status').value, search:$('account-search').value.trim()}), opts);
     } else if (view === 'proxies') result = await api('/proxies', opts);
+    else if (view === 'network') result = await api('/network', opts);
     else if (view === 'tokens') result = await api('/tokens/export/status', opts);
     else if (view === 'logs') result = await api('/logs?limit=100&level=' + $('log-level').value, opts);
     else result = await Promise.all([api('/settings', opts), api('/lzt/balance', opts)]);
@@ -136,6 +138,7 @@ async function loadView() {
     if (view === 'overview') renderOverview(...result);
     else if (view === 'accounts') renderAccounts(result);
     else if (view === 'proxies') renderProxies(result);
+    else if (view === 'network') renderNetwork(result);
     else if (view === 'tokens') renderTokens(result);
     else if (view === 'logs') renderLogs(result);
     else renderSettings(...result);
@@ -256,7 +259,7 @@ function renderProxies(result) {
   } else banner.hidden = true;
   details('proxy-summary', [['Рабочих', number(counts.alive || 0)], ['Мёртвых', number(counts.dead || 0)],
     ['Не проверено', number(counts.unchecked || 0)], ['Всего', number(counts.total || 0)],
-    ['Прокси в очистке', result.proxy_enabled ? 'Включены в конфиге' : 'Выключены']]);
+    ['Discord через прокси', result.proxy_enabled ? 'Обязательно' : 'Работа заблокирована']]);
   for (const id of ['proxy-import', 'proxy-recheck', 'proxy-clear-dead', 'proxy-clear-all']) $(id).disabled = proxyBusy;
   const items = result.items || [];
   if (!items.length) return empty('proxies-body', 'Пул пуст', 'Добавьте прокси через форму слева.', 5);
@@ -269,31 +272,89 @@ function renderProxies(result) {
     return row;
   }));
 }
+function renderNetwork(result) {
+  const minute = result.last_minute || {}, five = result.last_five_minutes || {}, cleaning = result.cleaner_last_five_minutes || {};
+  details('network-summary', [
+    ['Прокси обязательны', result.proxy_enabled ? 'Да, прямой выход запрещён' : 'Прокси выключены — Discord-запросы заблокированы'],
+    ['Рабочих / свободных прокси', number(result.alive_proxies) + ' / ' + number(result.free_proxies)],
+    ['Закреплено / недоступно', number(result.assigned_proxies) + ' / ' + number(result.unavailable_bindings)],
+    ['Потоки очистки', number(result.cleaner_workers)],
+    ['Запросов за 1 / 5 минут', number(minute.requests) + ' / ' + number(five.requests)],
+    ['429 за 1 / 5 минут', number(minute.rate_limits) + ' / ' + number(five.rate_limits)],
+    ['Очистка: запросов / 429 за 5 минут', number(cleaning.requests) + ' / ' + number(cleaning.rate_limits)],
+    ['Доля 429 за 5 минут', number(five.rate_limit_percent) + '%'],
+    ['Заданные Discord ожидания за 5 минут', number(five.retry_after_seconds) + ' с'],
+    ['Аккаунтов с 429', number(five.accounts_limited)],
+    ['Аккаунтов без доступного прокси за минуту', number(minute.accounts_waiting_proxy)],
+    ['Сетевых ошибок за 5 минут', number(five.network_errors)],
+    ['Ответов 401/403 за 5 минут', number(five.forbidden)],
+    ['Время сбора метрик', number(result.uptime_seconds) + ' с'],
+  ]);
+  let advice;
+  if (!result.available) advice = 'Обработчик не подключён. Доступны только сохранённые назначения прокси.';
+  else if (result.window_truncated) advice = 'Буфер метрик переполнен: показаны нижние оценки нагрузки. Не увеличивайте потоки по этим данным.';
+  else if (!result.proxy_enabled || minute.accounts_waiting_proxy) advice = 'Есть ожидание прокси. Добавление потоков не поможет: сначала проверьте пул и закреплённые прокси.';
+  else if (minute.rate_limits) advice = 'За последнюю минуту есть 429. Не увеличивайте потоки; при повторяющихся ограничениях уменьшите их и сравните следующие 5 минут. Паузы Discord соблюдаются автоматически.';
+  else if (five.network_errors) advice = 'Есть сетевые ошибки. Проверьте доступность прокси перед изменением числа потоков.';
+  else if (result.uptime_seconds < 300 || five.requests < 100) advice = 'Пока мало наблюдений. Сравните метрики после нескольких минут стабильной нагрузки.';
+  else advice = 'За последнюю минуту 429 не было. Это не гарантирует запас лимита: меняйте число потоков небольшими шагами и наблюдайте 5 минут.';
+  $('network-advice').textContent = advice;
+  const bindings = result.bindings || [];
+  $('network-bindings').replaceChildren(...bindings.map(item => {
+    const row = element('tr');
+    row.append(element('td', (item.account_id ? '#' + item.account_id + ' · ' : '') + item.account, 'mono'),
+      element('td', item.proxy + ' · ' + item.proxy_id, 'mono'),
+      element('td', item.available ? 'Доступен' : 'Ожидание'),
+      element('td', (result.active || []).find(active => active.account === item.account)?.stage || '—'),
+      element('td', result.cooldowns?.[item.account] ? result.cooldowns[item.account] + ' с' : '—'));
+    return row;
+  }));
+  const errors = [...(result.recent_errors || [])].reverse();
+  $('network-errors').replaceChildren(...errors.map(item => {
+    const row = element('tr');
+    row.append(element('td', date(item.at)), element('td', item.account, 'mono'),
+      element('td', item.stage), element('td', item.status || item.error),
+      element('td', item.scope || '—'), element('td', number(item.retry_after) + ' с'),
+      element('td', item.method + ' ' + item.route, 'mono'));
+    return row;
+  }));
+}
 async function proxyAction(action) {
   if (proxyBusy) return;
   try { await action(); await loadView(); }
   catch (error) { toast(error.message); }
 }
-let exportBusy = false;
+let exportBusy = false, uploadBusy = false;
 function renderTokens(job) {
   job = job || {};
   exportBusy = !!job.running;
   const banner = $('export-job');
   if (job.running) {
     banner.hidden = false; banner.className = 'alert';
-    banner.textContent = 'Выгрузка: проверено ' + number(job.done) + ' из ' + number(job.total) +
-      ' · валидных ' + number(job.valid) + ', невалидных ' + number(job.invalid);
+    banner.textContent = 'Выгрузка: проверено ' + number(job.done) + ' из ' + number(job.total);
   } else if (job.error) {
     banner.hidden = false; banner.className = 'alert error';
-    banner.textContent = 'Выгрузка прервана из-за ошибки. Попробуйте ещё раз.';
+    banner.textContent = 'Выгрузка прервана. Сохранённые файлы доступны в истории; повторите попытку.';
   } else if (job.finished_at) {
     banner.hidden = false; banner.className = 'alert warning';
-    banner.textContent = 'Готово: валидных ' + number(job.valid) + ', невалидных ' + number(job.invalid) +
-      (job.valid ? '. Файл отправлен в Telegram, можно скачать .txt.' : '. Валидных токенов нет.');
+    const delivery = job.delivery === 'sent' ? ' Файл отправлен в Telegram.'
+      : job.delivery === 'failed' ? ' Telegram не доставил файл — скачайте его ниже.'
+      : job.delivery === 'unknown' ? ' Статус доставки неизвестен — файл сохранён ниже.' : '';
+    banner.textContent = 'Сохранено: ' + number(job.valid) + ', невалидных: ' + number(job.invalid) +
+      ', отложено из-за недоступности проверки: ' + number(job.deferred) + '.' + delivery;
   } else banner.hidden = true;
-  $('token-export').disabled = exportBusy;
-  $('token-upload').disabled = exportBusy;
-  $('token-download').disabled = exportBusy || !job.available;
+  $('token-worker-note').hidden = !!job.worker_running;
+  $('token-export').disabled = exportBusy || !job.worker_running;
+  $('token-upload').disabled = exportBusy || uploadBusy || !job.worker_running;
+  const history = job.history || [], select = $('token-export-history'), previous = select.value;
+  select.replaceChildren(...history.map(item => {
+    const state = item.delivery === 'sent' ? 'Telegram: доставлен' : item.delivery === 'failed' ? 'Telegram: ошибка' : 'Telegram: не подтверждён';
+    const option = element('option', '#' + item.id + ' · ' + date(item.created_at) + ' · ' + number(item.count) + ' шт. · ' + state);
+    option.value = String(item.id); return option;
+  }));
+  if (history.some(item => String(item.id) === previous)) select.value = previous;
+  select.disabled = !history.length;
+  $('token-download').disabled = !history.length;
 }
 function renderLogs(result) {
   if (!result.items.length) return empty('log-entries',result.available?'Событий не найдено':'Журнал ещё не создан',result.available?'Выберите другой уровень или дождитесь новых событий.':'Записи появятся после первого события приложения.');
@@ -313,7 +374,7 @@ function renderSettings(result, balance) {
   const lzt = $('toggle-lzt'), close = $('toggle-close');
   if (document.activeElement !== lzt) lzt.checked = !!result.lzt_enabled;
   if (document.activeElement !== close) close.checked = !!result.close_channels;
-  lzt.disabled = close.disabled = result.monitoring_only;
+  lzt.disabled = close.disabled = false;
   balance = balance || {};
   const bal = balance.balance == null ? (balance.available ? '—' : 'Нет данных процесса') : money(balance.balance);
   details('balance-summary',[['Баланс LZT',bal],['Порог оповещения',money(balance.min_balance||0)]]);
@@ -396,21 +457,21 @@ $('toggle-close').addEventListener('change',()=>toggleSetting('close_channels',$
 $('token-upload').addEventListener('click',async()=>{
   const raw=$('token-input').value.trim();
   if (!raw) return toast('Вставьте токены');
-  $('token-upload').disabled=true;
-  try { const result=await api('/tokens/upload',{method:'POST',body:JSON.stringify({tokens:raw})}); toast('Загружено в обработку: '+result.added+' из '+result.total); $('token-input').value=''; }
+  uploadBusy=true; $('token-upload').disabled=true;
+  try { const result=await api('/tokens/upload',{method:'POST',body:JSON.stringify({tokens:raw})}); toast('Принято: '+result.added+'; дубликатов: '+result.duplicates+'; ошибок записи: '+result.errors); if (!result.errors) $('token-input').value=''; }
   catch(error){toast(error.message);}
-  finally{$('token-upload').disabled=false;}
+  finally{uploadBusy=false; await loadView();}
 });
 $('token-export').addEventListener('click',async()=>{
   if (exportBusy) return;
-  if (!await confirmAction('Выгрузить готовые токены?','Готовые токены пройдут проверку, валидные будут помечены «отправлены» и уйдут файлом в Telegram.')) return;
+  if (!await confirmAction('Выгрузить готовые токены?','Проверенные токены сохранятся в истории выгрузок и будут помечены «отправлены». Затем начнётся доставка файла в Telegram.')) return;
   try { await api('/tokens/export',{method:'POST',body:'{}'}); toast('Выгрузка запущена'); await loadView(); }
   catch(error){toast(error.message);}
 });
 $('token-download').addEventListener('click',async()=>{
   const button=$('token-download'); button.disabled=true;
   try {
-    const blob=await api('/tokens/export/download',{blob:true});
+    const blob=await api('/tokens/export/download?id='+encodeURIComponent($('token-export-history').value),{blob:true});
     const url=URL.createObjectURL(blob), link=element('a'); link.href=url; link.download='tokens.txt'; document.body.append(link); link.click(); link.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000); toast('Файл готов');
   } catch(error){toast(error.message);} finally{button.disabled=false;}
 });

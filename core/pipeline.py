@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import time
@@ -7,9 +6,11 @@ from queue import Queue
 from typing import Dict
 
 from modules.lzt_monitor import LZTMonitor
-from modules.validator import TokenValidator
+from modules.validator import TokenValidator, ValidationUnavailable
 from modules.cleaner import process_token
+from modules.discord_transport import DiscordTransport
 from modules.database import Database
+from modules.configuration import save_config_value
 from modules.telegram_bot import TelegramBot
 from modules.cloudflare_helper import CloudflareHelper
 
@@ -40,6 +41,8 @@ class TokenPipeline:
         self.config = config
         self.config_path = config_path
         self.running = False
+        self._intake_lock = threading.Lock()
+        self._export_lock = threading.Lock()
 
         # Закрывать ли чаты при очистке (переключается из Telegram)
         self.close_channels = bool(config.get('cleaner', {}).get('close_channels', True))
@@ -85,10 +88,15 @@ class TokenPipeline:
             database=self.db  # Передаем БД для проверки дубликатов
         )
         
+        from modules.cleaner import ProxyManager
+        self.proxy_manager = ProxyManager(db=self.db) if self.config.get('proxy', {}).get('enabled') else None
+        self.discord_transport = DiscordTransport(self.proxy_manager)
+
         # Validator
         self.validator = TokenValidator(
             timeout=self.config['validator']['timeout'],
-            max_retries=self.config['validator']['max_retries']
+            max_retries=self.config['validator']['max_retries'],
+            transport=self.discord_transport
         )
         
         # Telegram Bot
@@ -100,17 +108,6 @@ class TokenPipeline:
         
         # Cloudflare Tunnel Helper
         self.cloudflare = CloudflareHelper()
-
-        # Общий менеджер прокси (пул живых прокси из БД). Каждому токену при
-        # очистке выдаётся выделенный прокси. Панель обновляет пул и вызывает reload().
-        self.proxy_manager = None
-        if self.config.get('proxy', {}).get('enabled'):
-            try:
-                from modules.cleaner import ProxyManager
-                self.proxy_manager = ProxyManager(db=self.db)
-                logger.info(f"🔐 Прокси включены, живых в пуле: {self.proxy_manager.count()}")
-            except Exception as e:
-                logger.warning(f"⚠️ Не удалось инициализировать пул прокси: {e}")
 
         logger.info("✅ Все модули инициализированы")
     
@@ -494,7 +491,7 @@ class TokenPipeline:
             
             from modules.advanced_checker_simplified import SimpleDiscordChecker
             
-            checker = SimpleDiscordChecker(threads=10)
+            checker = SimpleDiscordChecker(threads=10, transport=self.discord_transport)
             
             last_update = [time.time()]
             
@@ -594,8 +591,9 @@ class TokenPipeline:
     def _handle_toggle_close_channels_command(self, chat_id: str = None, message_id: int = None):
         """Переключает закрытие чатов при очистке и сохраняет настройку."""
         try:
-            self.close_channels = not self.close_channels
-            self._persist_config_value('cleaner', 'close_channels', self.close_channels)
+            new_value = not self.close_channels
+            self._persist_config_value('cleaner', 'close_channels', new_value)
+            self.close_channels = new_value
 
             state = "включено" if self.close_channels else "выключено"
             logger.info(f"⚙️ Закрытие чатов при очистке: {state}")
@@ -613,8 +611,9 @@ class TokenPipeline:
     def _handle_toggle_lzt_command(self, chat_id: str = None, message_id: int = None):
         """Переключает получение аккаунтов с lolz/LZT и сохраняет настройку."""
         try:
-            self.lzt_enabled = not self.lzt_enabled
-            self._persist_config_value('lzt', 'enabled', self.lzt_enabled)
+            new_value = not self.lzt_enabled
+            self._persist_config_value('lzt', 'enabled', new_value)
+            self.lzt_enabled = new_value
 
             state = "включено" if self.lzt_enabled else "выключено"
             logger.info(f"⚙️ Получение аккаунтов с lolz: {state}")
@@ -634,34 +633,21 @@ class TokenPipeline:
         Сохраняет одно значение в config.json, не трогая остальные поля
         и не раскрывая ${ENV} плейсхолдеры (читаем сырой файл, а не self.config).
         """
-        # Держим in-memory конфиг в актуальном состоянии
-        self.config.setdefault(section, {})[key] = value
-
-        try:
-            if not os.path.exists(self.config_path):
-                logger.warning(f"⚠️ config.json не найден ({self.config_path}), настройка не сохранена на диск")
-                return
-            with open(self.config_path, 'r', encoding='utf-8') as f:
-                raw_config = json.load(f)
-            raw_config.setdefault(section, {})[key] = value
-            with open(self.config_path, 'w', encoding='utf-8') as f:
-                json.dump(raw_config, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            logger.error(f"❌ Не удалось сохранить настройку {section}.{key}: {e}")
+        save_config_value(self.config_path, self.config, section, key, value)
 
     # ==================== ИНТЕРФЕЙС ДЛЯ ВЕБ-ПАНЕЛИ ====================
 
     def set_close_channels(self, value: bool) -> bool:
         """Включает/выключает закрытие чатов при очистке и сохраняет настройку."""
+        self._persist_config_value('cleaner', 'close_channels', bool(value))
         self.close_channels = bool(value)
-        self._persist_config_value('cleaner', 'close_channels', self.close_channels)
         logger.info(f"⚙️ Закрытие чатов при очистке: {'включено' if self.close_channels else 'выключено'}")
         return self.close_channels
 
     def set_lzt_enabled(self, value: bool) -> bool:
         """Включает/выключает получение аккаунтов с lolz/LZT и сохраняет настройку."""
+        self._persist_config_value('lzt', 'enabled', bool(value))
         self.lzt_enabled = bool(value)
-        self._persist_config_value('lzt', 'enabled', self.lzt_enabled)
         logger.info(f"⚙️ Получение аккаунтов с lolz: {'включено' if self.lzt_enabled else 'выключено'}")
         return self.lzt_enabled
 
@@ -690,64 +676,71 @@ class TokenPipeline:
         return tokens
 
     def add_manual_tokens(self, raw_text: str) -> dict:
-        """Добавляет вручную вставленные токены в БД и очередь валидации."""
+        """Accept only persisted new records while workers are running."""
         tokens = self._parse_manual_tokens(raw_text)
-        added = 0
-        for token in tokens:
-            try:
-                # При дубликате всё равно кладём в очередь — уникальность не проверяем.
+        added = duplicates = errors = 0
+        with self._intake_lock:
+            if not self.running:
+                raise RuntimeError('Обработка остановлена')
+            for token in tokens:
                 try:
-                    self.db.add_token(token=token, seller_username='manual_upload', price=0)
-                except Exception as db_err:
-                    logger.debug(f"add_token: {db_err}")
+                    record_id = self.db.add_token(
+                        token=token, seller_username='manual_upload', price=0)
+                except Exception as exc:
+                    errors += 1
+                    logger.error('Ошибка сохранения загружаемой записи: %s', type(exc).__name__)
+                    continue
+                if record_id is None:
+                    duplicates += 1
+                    continue
                 self.new_tokens_queue.put({
                     'token': token, 'item_id': None, 'username': 'Manual',
                     'seller_username': 'manual_upload', 'price': 0,
                 })
                 added += 1
-            except Exception as e:
-                logger.error(f"❌ Ошибка добавления токена: {e}")
-        logger.info(f"📥 Ручная загрузка из панели: всего {len(tokens)}, принято {added}")
-        return {'added': added, 'total': len(tokens)}
+        return {'added': added, 'total': len(tokens), 'duplicates': duplicates, 'errors': errors}
 
     def export_ready_tokens(self, progress_cb=None) -> dict:
-        """
-        Прогоняет готовые токены через валидатор: валидные → 'sent', невалидные →
-        'invalid'. Валидные отправляются файлом в Telegram и возвращаются вызывающему
-        (панель предлагает их скачать). progress_cb(done, total, valid, invalid).
-        """
-        ready_tokens = self.db.get_ready_tokens(limit=1000)
-        total = len(ready_tokens)
-        valid_tokens, invalid_count = [], 0
-        for i, token_data in enumerate(ready_tokens, 1):
-            token = token_data['token']
-            try:
-                is_valid, _ = self.validator.validate_token(token)
-            except Exception as e:
-                logger.warning(f"⚠️ [Export] Ошибка валидации токена: {e}")
-                is_valid = False
-            if is_valid:
-                valid_tokens.append(token)
-                self.db.update_token_status(token=token, status='sent')
-            else:
-                invalid_count += 1
-                self.db.update_token_status(token=token, status='invalid',
-                                            error='Failed validation on export')
-            if progress_cb:
+        """Save an atomic, durable export before attempting Telegram delivery."""
+        if not self._export_lock.acquire(blocking=False):
+            raise RuntimeError('Выгрузка уже выполняется')
+        try:
+            if not self.running:
+                raise RuntimeError('Обработка остановлена')
+            ready_tokens = self.db.get_ready_tokens(limit=1000)
+            total = len(ready_tokens)
+            valid_tokens, invalid_tokens = [], []
+            deferred = 0
+            for i, token_data in enumerate(ready_tokens, 1):
+                token = token_data['token']
                 try:
-                    progress_cb(i, total, len(valid_tokens), invalid_count)
-                except Exception:
-                    pass
-            time.sleep(0.3)
-        self.ready_tokens_notification_sent = False
-        logger.info(f"📤 [Export] Завершено: валидных={len(valid_tokens)}, невалидных={invalid_count}")
-        # Доставка готовых токенов остаётся за Telegram.
-        if valid_tokens:
-            try:
-                self.telegram.send_tokens_file(valid_tokens)
-            except Exception as e:
-                logger.error(f"❌ Не удалось отправить файл токенов в Telegram: {e}")
-        return {'total': total, 'valid_tokens': valid_tokens, 'invalid': invalid_count}
+                    is_valid, _ = self.validator.validate_token(token, strict=True, stage='export')
+                except ValidationUnavailable:
+                    deferred += 1
+                else:
+                    (valid_tokens if is_valid else invalid_tokens).append(token)
+                if progress_cb:
+                    progress_cb(i, total, len(valid_tokens), len(invalid_tokens))
+            result = self.db.commit_export(valid_tokens, invalid_tokens)
+            result.update(total=total, deferred=deferred, delivery='not_needed')
+            self.ready_tokens_notification_sent = False
+            if result['export_id'] is not None:
+                delivery = 'failed'
+                try:
+                    if self.telegram.send_tokens_file(result['valid_tokens']):
+                        delivery = 'sent'
+                except Exception as exc:
+                    logger.error('Ошибка доставки выгрузки: %s', type(exc).__name__)
+                result['delivery'] = delivery
+                # Even failure to record delivery cannot discard the saved file.
+                try:
+                    self.db.set_export_delivery(result['export_id'], delivery)
+                except Exception as exc:
+                    result['delivery'] = 'unknown'
+                    logger.error('Ошибка сохранения статуса доставки: %s', type(exc).__name__)
+            return result
+        finally:
+            self._export_lock.release()
 
     def _handle_dashboard_url_command(self, chat_id: str = None, message_id: int = None):
         """Обработчик команды получения Dashboard URL"""
@@ -901,7 +894,7 @@ class TokenPipeline:
                 
                 # Валидируем токен с обработкой исключений
                 try:
-                    is_valid, username = self.validator.validate_token(purchase['token'])
+                    is_valid, username = self.validator.validate_token(purchase['token'], strict=True, stage='validator_initial')
                 except Exception as e:
                     logger.error(f"❌ [Validator #1] Ошибка валидации: {e}")
                     # Возвращаем токен обратно в очередь для повторной попытки
@@ -998,15 +991,29 @@ class TokenPipeline:
                 progress_tracker = DBProgressTracker(self.db, purchase['token'])
 
                 # Выдаём этому токену выделенный прокси из пула
-                proxy_info = proxy_manager.acquire() if proxy_manager is not None else None
+                proxy_info = proxy_manager.acquire(purchase['token']) if proxy_manager is not None else None
+                if proxy_info is None:
+                    self.db.update_token_status(token=purchase['token'], status='validated',
+                                                cleaning_progress='Ожидание закреплённого прокси')
+                    self.validated_queue.put(purchase)
+                    self.validated_queue.task_done()
+                    time.sleep(5)
+                    continue
 
                 # Создаем API клиент
-                api = DiscordAPI(proxy_manager, progress_tracker, proxy_info=proxy_info)
+                api = DiscordAPI(proxy_manager, progress_tracker, proxy_info=proxy_info, transport=self.discord_transport)
 
                 # Запускаем очистку
                 process_token(api, purchase['token'], progress_tracker,
                               close_channels=self.close_channels)
-                
+                if api.request_failed:
+                    self.db.update_token_status(token=purchase['token'], status='validated',
+                                                cleaning_progress='Ожидание после сетевой ошибки или rate limit')
+                    self.validated_queue.put(purchase)
+                    self.validated_queue.task_done()
+                    time.sleep(5)
+                    continue
+
                 logger.info(f"✅ [Cleaner] Очистка завершена для {purchase.get('username', 'Unknown')}")
                 
                 # Обновляем статус в БД
@@ -1043,7 +1050,7 @@ class TokenPipeline:
                 
                 # Валидируем токен с обработкой исключений
                 try:
-                    is_valid, username = self.validator.validate_token(purchase['token'])
+                    is_valid, username = self.validator.validate_token(purchase['token'], strict=True, stage='validator_final')
                 except Exception as e:
                     logger.error(f"❌ [Validator #2] Ошибка валидации: {e}")
                     # Возвращаем токен обратно в очередь для повторной попытки
@@ -1235,6 +1242,8 @@ class TokenPipeline:
         """
         count = max(1, min(200, int(count)))
         with self._cleaner_lock:
+            # Ошибка записи должна остановить применение настройки.
+            self._persist_config_value('cleaner', 'max_workers', count)
             self._prune_cleaner_workers()
             current = len(self._cleaner_workers)
             if self.running and count > current:
@@ -1253,7 +1262,6 @@ class TokenPipeline:
                 self._cleaner_workers = self._cleaner_workers[:count]
             self.cleaner_target = count
 
-        self._persist_config_value('cleaner', 'max_workers', count)
         logger.info(f"🧵 Число потоков очистки установлено: {count}")
         return count
 
@@ -1265,7 +1273,8 @@ class TokenPipeline:
 
         logger.info("⏹️ Остановка Pipeline...")
 
-        self.running = False
+        with self._intake_lock:
+            self.running = False
 
         # Останавливаем Telegram polling
         self.telegram.stop_polling()

@@ -1,5 +1,5 @@
 [Unit]
-Description=Discord Tools authenticated monitoring dashboard
+Description=Discord Tools dashboard and processing worker
 After=network.target
 
 [Service]
@@ -7,7 +7,7 @@ Type=simple
 User=discord-tools
 Group=discord-tools
 WorkingDirectory=/opt/discord-tools
-ExecStart=/opt/discord-tools/.venv/bin/python /opt/discord-tools/dashboard_api.py --config /opt/discord-tools/config.json
+ExecStart=/opt/discord-tools/.venv/bin/python /opt/discord-tools/dashboard_api.py --with-worker --config /opt/discord-tools/data/config.json
 Restart=on-failure
 RestartSec=5
 UMask=0077

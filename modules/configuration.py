@@ -2,9 +2,13 @@
 
 import json
 import os
+import stat
+import tempfile
+import threading
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_CONFIG_WRITE_LOCK = threading.Lock()
 
 
 def load_env_file(env_path=None):
@@ -42,3 +46,36 @@ def load_config(config_path=None):
         if value and not Path(value).is_absolute():
             config[section][key] = str(path.parent / value)
     return config
+
+
+def save_config_value(config_path, config, section, key, value):
+    """Atomically update raw JSON; publish the in-memory value only after saving.
+
+    Read/write failures propagate to the caller. Environment placeholders stay
+    in the file, and concurrent writes in this process preserve other settings.
+    """
+    path = Path(config_path).resolve()
+    with _CONFIG_WRITE_LOCK:
+        raw = json.loads(path.read_text(encoding='utf-8'))
+        if not isinstance(raw, dict) or not isinstance(raw.get(section, {}), dict):
+            raise ValueError('Некорректная структура конфигурации')
+        if not isinstance(config.get(section, {}), dict):
+            raise ValueError('Некорректная структура конфигурации в памяти')
+        raw.setdefault(section, {})[key] = value
+        mode = stat.S_IMODE(path.stat().st_mode)
+        temporary_path = None
+        try:
+            with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8',
+                                             dir=path.parent, prefix='.' + path.name + '.',
+                                             suffix='.tmp', delete=False) as handle:
+                temporary_path = Path(handle.name)
+                json.dump(raw, handle, ensure_ascii=False, indent=2)
+                handle.write('\n')
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.chmod(temporary_path, mode)
+            os.replace(temporary_path, path)
+        finally:
+            if temporary_path is not None and temporary_path.exists():
+                temporary_path.unlink()
+        config.setdefault(section, {})[key] = value

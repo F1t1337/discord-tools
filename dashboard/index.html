@@ -40,6 +40,7 @@
         <a href="#overview" data-view="overview"><span aria-hidden="true">◫</span>Обзор</a>
         <a href="#accounts" data-view="accounts"><span aria-hidden="true">▤</span>Аккаунты</a>
         <a href="#tokens" data-view="tokens"><span aria-hidden="true">⇩</span>Токены</a>
+        <a href="#network" data-view="network"><span aria-hidden="true">↯</span>Сеть и лимиты</a>
         <a href="#proxies" data-view="proxies"><span aria-hidden="true">⇄</span>Прокси</a>
         <a href="#logs" data-view="logs"><span aria-hidden="true">≡</span>Журнал событий</a>
         <a href="#settings" data-view="settings"><span aria-hidden="true">⚙</span>Настройки</a>
@@ -93,10 +94,19 @@
               <button id="proxy-clear-dead" class="button secondary">Удалить мёртвые</button>
               <button id="proxy-clear-all" class="button danger">Очистить всё</button>
             </div>
-            <p class="muted">При очистке каждому токену выдаётся отдельный прокси из этого пула.</p>
+            <p class="muted">За аккаунтом постоянно закрепляется один прокси для проверки, очистки и выгрузки. При нехватке или сбое аккаунт ждёт; прямого выхода и автоматической замены нет.</p>
           </article>
         </div>
         <div class="panel table-panel"><div class="table-overflow"><table><thead><tr><th>Прокси</th><th>Авторизация</th><th>Состояние</th><th>Пинг</th><th>Проверен</th></tr></thead><tbody id="proxies-body"></tbody></table></div></div>
+      </section>
+
+      <section id="view-network" class="view" aria-label="Сеть и лимиты" hidden>
+        <div class="panel"><h2>Прокси и ограничения Discord</h2><dl id="network-summary" class="detail-list"></dl>
+          <p id="network-advice" class="alert" role="status"></p><a href="#settings">Изменить число потоков</a>
+          <p class="muted">Метрики собираются с запуска процесса. Ожидания — сумма retry_after, а не время простоя всей системы. Разные адреса прокси не гарантируют разные внешние IP у провайдера.</p>
+        </div>
+        <div class="panel table-panel"><h2>Закрепления аккаунтов (последние 250)</h2><div class="table-overflow"><table><thead><tr><th>Аккаунт</th><th>Прокси</th><th>Доступность</th><th>Этап</th><th>Cooldown</th></tr></thead><tbody id="network-bindings"></tbody></table></div></div>
+        <div class="panel table-panel"><h2>Последние 50 ограничений и сетевых ошибок</h2><div class="table-overflow"><table><thead><tr><th>Время</th><th>Аккаунт</th><th>Этап</th><th>Ошибка</th><th>Область</th><th>Ожидание</th><th>Запрос</th></tr></thead><tbody id="network-errors"></tbody></table></div></div>
       </section>
 
       <section id="view-tokens" class="view" aria-label="Токены" hidden>
@@ -105,11 +115,14 @@
             <div class="panel-heading"><div><p class="section-label">ЗАГРУЗКА</p><h2>Добавить токены</h2></div></div>
             <p class="muted">Вставьте токены — по одному в строке. Поддерживается формат <code>login:pass:token</code> (берётся последний сегмент). Токены уходят в очередь обработки.</p>
             <textarea id="token-input" class="proxy-input" rows="8" placeholder="MTk...token&#10;login:pass:MTk...token" maxlength="1000000"></textarea>
-            <div class="panel-action"><button id="token-upload" class="button primary">Загрузить в обработку</button><p class="muted">Дубликаты не проверяются — всё уходит в очередь валидации.</p></div>
+            <div class="panel-action"><button id="token-upload" class="button primary">Загрузить в обработку</button><p class="muted">Дубликаты пропускаются. Принятые записи сохраняются в базе перед постановкой в очередь.</p></div>
           </article>
           <article class="panel">
             <div class="panel-heading"><div><p class="section-label">ВЫГРУЗКА</p><h2>Готовые токены</h2></div></div>
-            <p class="muted">Проверяет готовые токены: валидные помечаются «отправлены» и уходят файлом в Telegram. Здесь же можно скачать .txt.</p>
+            <p class="muted">Проверенные токены сохраняются в истории и помечаются «отправлены». Файл остаётся доступным после перезапуска и ошибок Telegram.</p>
+            <p id="token-worker-note" class="alert warning" hidden>Обработка не запущена. Загрузка и новая выгрузка недоступны; сохранённые файлы можно скачать. Для управления запустите сервис с обработчиком.</p>
+            <label for="token-export-history">Сохранённые выгрузки (последние 100)</label>
+            <select id="token-export-history" disabled></select>
             <div id="export-job" class="alert" role="status" hidden></div>
             <div class="panel-action proxy-actions">
               <button id="token-export" class="button primary">Выгрузить готовые токены</button>

@@ -25,3 +25,6 @@ data/credentials.json
 data/proxies.txt
 proxies.txt
 tokens.txt
+
+# Writable service configuration
+data/config.json

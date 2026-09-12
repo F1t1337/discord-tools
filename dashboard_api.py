@@ -3,11 +3,11 @@ import argparse
 import csv
 import hmac
 import io
-import json
 import logging
 import os
 import re
 import secrets
+import signal
 import threading
 import time
 from collections import OrderedDict, deque
@@ -19,7 +19,7 @@ from werkzeug.exceptions import HTTPException
 from werkzeug.security import check_password_hash
 
 from modules.access_control import dashboard_settings, telegram_owner_ids
-from modules.configuration import PROJECT_ROOT, load_config
+from modules.configuration import PROJECT_ROOT, load_config, load_env_file, save_config_value
 from modules.database import Database
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,7 @@ ASSETS = PROJECT_ROOT / 'dashboard'
 app = Flask(__name__, static_folder=None)
 pipeline = None
 config = None
+config_path = PROJECT_ROOT / 'config.json'
 db = None
 settings = None
 started_at = time.time()
@@ -45,18 +46,18 @@ proxy_job_lock = threading.Lock()
 proxy_job = {'running': False, 'kind': None, 'total': 0, 'done': 0, 'alive': 0,
              'dead': 0, 'started_at': None, 'finished_at': None, 'error': None}
 
-# Фоновая выгрузка готовых токенов: одно задание за раз. Валидные токены хранятся
-# в памяти для скачивания из панели и параллельно уходят файлом в Telegram.
+# One active job per process; completed downloads are stored durably in SQLite.
 export_job_lock = threading.Lock()
 export_job = {'running': False, 'total': 0, 'done': 0, 'valid': 0, 'invalid': 0,
               'started_at': None, 'finished_at': None, 'error': None, 'available': False}
-export_tokens_buffer = []
 
 
-def init_dashboard(pipeline_instance, config_dict):
-    global pipeline, config, db, settings, started_at, stop_requested
+def init_dashboard(pipeline_instance, config_dict, config_file=None):
+    global pipeline, config, config_path, db, settings, started_at, stop_requested
     settings = dashboard_settings(config_dict)
     pipeline, config = pipeline_instance, config_dict
+    config_path = Path(config_file or getattr(pipeline, 'config_path', None)
+                       or PROJECT_ROOT / 'config.json').resolve()
     app.config.update(
         SECRET_KEY=settings['secret'],
         SESSION_COOKIE_NAME='discord_admin_session',
@@ -78,8 +79,8 @@ def init_dashboard(pipeline_instance, config_dict):
                          dead=0, started_at=None, finished_at=None, error=None)
     with export_job_lock:
         export_job.update(running=False, total=0, done=0, valid=0, invalid=0,
-                          started_at=None, finished_at=None, error=None, available=False)
-        export_tokens_buffer.clear()
+                          started_at=None, finished_at=None, error=None, available=False,
+                          deferred=0, delivery=None, export_id=None)
     logger.info('Защищённая панель инициализирована')
 
 
@@ -297,6 +298,28 @@ def get_status():
     )
 
 
+@app.get('/api/network')
+def network_status():
+    from modules.cleaner import parse_proxy
+    from modules.discord_transport import account_key, proxy_endpoint
+    bindings = db.proxy_bindings()
+    alive = {account_key(parsed['https']): parsed['https']
+             for raw in db.list_alive_proxies() if (parsed := parse_proxy(raw)).get('https')}
+    occupied = {row['proxy_key'] for row in bindings}
+    monitor = getattr(getattr(pipeline, 'discord_transport', None), 'monitor', None)
+    result = monitor.snapshot() if monitor else {'available': False}
+    result.update(proxy_required=True, proxy_enabled=bool(config.get('proxy', {}).get('enabled')),
+                  alive_proxies=len(alive), assigned_proxies=len(bindings),
+                  free_proxies=len(set(alive) - occupied),
+                  unavailable_bindings=sum(row['proxy_key'] not in alive for row in bindings),
+                  cleaner_workers=(pipeline.count_cleaner_workers() if pipeline is not None else 0),
+                  bindings=[{'account': row['account_hash'][:12], 'account_id': row['account_id'],
+                             'proxy': proxy_endpoint(row['proxy_url']),
+                             'proxy_id': row['proxy_key'][:12], 'available': row['proxy_key'] in alive}
+                            for row in bindings[:250]])
+    return jsonify(result)
+
+
 @app.get('/api/statistics/today')
 def today_stats():
     return jsonify(db.get_today_statistics())
@@ -487,15 +510,9 @@ def reload_pipeline_proxies():
             logger.warning('Не удалось перечитать пул прокси в pipeline')
 
 
-def start_proxy_job(kind, proxy_strings):
-    """Запускает фоновую проверку прокси. Возвращает False, если задание уже идёт."""
+def start_proxy_job(kind, proxy_strings=None):
+    """Возвращает число принятых прокси или 0, если задание уже идёт."""
     from modules.cleaner import check_proxy_list
-    with proxy_job_lock:
-        if proxy_job['running']:
-            return False
-        proxy_job.update(running=True, kind=kind, total=len(proxy_strings), done=0,
-                         alive=0, dead=0, started_at=time.time(), finished_at=None, error=None)
-
     def worker():
         def on_result(proxy_str, alive, ping):
             try:
@@ -506,19 +523,36 @@ def start_proxy_job(kind, proxy_strings):
                 proxy_job['done'] += 1
                 proxy_job['alive' if alive else 'dead'] += 1
         try:
+            # Only the accepted job may add rows. Preserve the current timeout.
+            if kind == 'import':
+                db.add_proxies(proxy_strings)
             check_proxy_list(proxy_strings, max_workers=40, timeout=8, on_result=on_result)
         except Exception as exc:
             with proxy_job_lock:
                 proxy_job['error'] = type(exc).__name__
             logger.error('Ошибка проверки прокси: %s', type(exc).__name__)
         finally:
+            reload_pipeline_proxies()
             with proxy_job_lock:
                 proxy_job['running'] = False
                 proxy_job['finished_at'] = time.time()
-            reload_pipeline_proxies()
 
-    threading.Thread(target=worker, name='ProxyCheck', daemon=True).start()
-    return True
+    with proxy_job_lock:
+        if proxy_job['running']:
+            return 0
+        if proxy_strings is None:
+            # Снимок перечека согласован с импортом и удалением пула.
+            proxy_strings = [row['proxy'] for row in db.list_proxies()]
+        if not proxy_strings:
+            raise ValueError('Пул прокси пуст')
+        proxy_job.update(running=True, kind=kind, total=len(proxy_strings), done=0,
+                         alive=0, dead=0, started_at=time.time(), finished_at=None, error=None)
+        try:
+            threading.Thread(target=worker, name='ProxyCheck', daemon=True).start()
+        except Exception as exc:
+            proxy_job.update(running=False, finished_at=time.time(), error=type(exc).__name__)
+            raise
+    return len(proxy_strings)
 
 
 @app.get('/api/proxies')
@@ -543,7 +577,6 @@ def import_proxies():
         return error('Не найдено ни одного прокси')
     if len(proxies) > MAX_PROXY_IMPORT:
         return error(f'Слишком много прокси за один раз (максимум {MAX_PROXY_IMPORT})')
-    db.add_proxies(proxies)
     if not start_proxy_job('import', proxies):
         return error('Проверка уже выполняется, дождитесь завершения', 409)
     return jsonify(success=True, queued=len(proxies)), 202
@@ -551,25 +584,28 @@ def import_proxies():
 
 @app.post('/api/proxies/recheck')
 def recheck_proxies():
-    proxies = [row['proxy'] for row in db.list_proxies()]
-    if not proxies:
+    try:
+        queued = start_proxy_job('recheck')
+    except ValueError:
         return error('Пул прокси пуст', 409)
-    if not start_proxy_job('recheck', proxies):
+    if not queued:
         return error('Проверка уже выполняется, дождитесь завершения', 409)
-    return jsonify(success=True, queued=len(proxies)), 202
+    return jsonify(success=True, queued=queued), 202
 
 
 @app.post('/api/proxies/clear')
 def clear_proxies():
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return error('Нужен JSON-объект')
     scope = data.get('scope', 'dead')
     if scope not in ('dead', 'all'):
         return error('Неверная область очистки')
     with proxy_job_lock:
         if proxy_job['running']:
             return error('Дождитесь завершения проверки прокси', 409)
-    removed = db.delete_proxies(scope)
-    reload_pipeline_proxies()
+        removed = db.delete_proxies(scope)
+        reload_pipeline_proxies()
     return jsonify(success=True, removed=removed)
 
 
@@ -581,28 +617,22 @@ def set_cleaner_workers():
     value = data.get('workers')
     if not isinstance(value, int) or isinstance(value, bool) or not 1 <= value <= 200:
         return error('Число потоков должно быть от 1 до 200')
-    if pipeline is not None and hasattr(pipeline, 'set_cleaner_workers'):
-        applied = pipeline.set_cleaner_workers(value)
-        return jsonify(success=True, workers=applied, live=True)
-    # Режим мониторинга: рабочий процесс не запущен — только сохраняем в config.json
-    persist_config_value('cleaner', 'max_workers', value)
+    try:
+        if pipeline is not None and hasattr(pipeline, 'set_cleaner_workers'):
+            applied = pipeline.set_cleaner_workers(value)
+            return jsonify(success=True, workers=applied, live=True)
+        # Режим мониторинга: только сохраняем в выбранный файл конфигурации.
+        persist_config_value('cleaner', 'max_workers', value)
+    except (OSError, ValueError, TypeError) as exc:
+        logger.error('Настройка не сохранена: %s', type(exc).__name__)
+        return error('Не удалось сохранить настройку. Проверьте файл конфигурации '
+                     'и права записи в его каталог на сервере.', 500)
     return jsonify(success=True, workers=value, live=False)
 
 
 def persist_config_value(section, key, value):
-    """Сохраняет одно значение в config.json (режим мониторинга без pipeline)."""
-    config.setdefault(section, {})[key] = value
-    path = PROJECT_ROOT / 'config.json'
-    try:
-        if not path.exists():
-            return
-        with path.open('r', encoding='utf-8') as handle:
-            raw = json.load(handle)
-        raw.setdefault(section, {})[key] = value
-        with path.open('w', encoding='utf-8') as handle:
-            json.dump(raw, handle, ensure_ascii=False, indent=2)
-    except Exception:
-        logger.warning('Не удалось сохранить настройку %s.%s', section, key)
+    """Сохраняет настройку; ошибки записи обрабатываются HTTP-обработчиком."""
+    save_config_value(config_path, config, section, key, value)
 
 
 # ==================== ТОКЕНЫ, БАЛАНС, ПЕРЕКЛЮЧАТЕЛИ ====================
@@ -638,7 +668,7 @@ def toggle_setting():
 
 @app.post('/api/tokens/upload')
 def upload_tokens():
-    if pipeline is None or not hasattr(pipeline, 'add_manual_tokens'):
+    if pipeline is None or not pipeline.running or stop_requested:
         return error('Загрузка токенов доступна только при запущенной обработке', 503)
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
@@ -649,19 +679,21 @@ def upload_tokens():
     if len(raw) > MAX_BODY_BYTES:
         return error('Слишком большой список токенов')
     result = pipeline.add_manual_tokens(raw)
-    return jsonify(success=True, added=result['added'], total=result['total'])
+    return jsonify(success=result['errors'] == 0, **result)
 
 
 @app.post('/api/tokens/export')
 def export_tokens():
-    if pipeline is None or not hasattr(pipeline, 'export_ready_tokens'):
+    if pipeline is None or not pipeline.running or stop_requested:
         return error('Выгрузка доступна только при запущенной обработке', 503)
     with export_job_lock:
+        if stop_requested or not pipeline.running:
+            return error('Обработка останавливается', 409)
         if export_job['running']:
             return error('Выгрузка уже выполняется, дождитесь завершения', 409)
         export_job.update(running=True, total=0, done=0, valid=0, invalid=0,
-                          started_at=time.time(), finished_at=None, error=None, available=False)
-        export_tokens_buffer.clear()
+                          started_at=time.time(), finished_at=None, error=None, available=False,
+                          deferred=0, delivery=None, export_id=None)
 
     def worker():
         def progress(done, total, valid, invalid):
@@ -670,10 +702,9 @@ def export_tokens():
         try:
             result = pipeline.export_ready_tokens(progress_cb=progress)
             with export_job_lock:
-                export_tokens_buffer.clear()
-                export_tokens_buffer.extend(result['valid_tokens'])
                 export_job.update(total=result['total'], valid=len(result['valid_tokens']),
-                                  invalid=result['invalid'], available=bool(result['valid_tokens']))
+                                  invalid=result['invalid'], deferred=result['deferred'],
+                                  delivery=result['delivery'], export_id=result['export_id'])
         except Exception as exc:
             with export_job_lock:
                 export_job['error'] = type(exc).__name__
@@ -683,22 +714,33 @@ def export_tokens():
                 export_job['running'] = False
                 export_job['finished_at'] = time.time()
 
-    threading.Thread(target=worker, name='TokenExport', daemon=True).start()
+    try:
+        threading.Thread(target=worker, name='TokenExport', daemon=True).start()
+    except Exception:
+        with export_job_lock:
+            export_job.update(running=False, error='StartFailed', finished_at=time.time())
+        raise
     return jsonify(success=True), 202
 
 
 @app.get('/api/tokens/export/status')
 def export_status():
     with export_job_lock:
-        return jsonify(dict(export_job))
+        result = dict(export_job)
+    history = db.list_exports()
+    result.update(available=bool(history), history=history,
+                  worker_running=bool(pipeline is not None and pipeline.running and not stop_requested))
+    return jsonify(result)
 
 
 @app.get('/api/tokens/export/download')
 def export_download():
-    with export_job_lock:
-        if export_job['running']:
-            return error('Выгрузка ещё выполняется', 409)
-        tokens = list(export_tokens_buffer)
+    batch_id = request.args.get('id')
+    if batch_id is not None:
+        if not batch_id.isascii() or not batch_id.isdigit() or len(batch_id) > 18 or int(batch_id) < 1:
+            return error('Неверный номер выгрузки')
+        batch_id = int(batch_id)
+    tokens = db.get_export_tokens(batch_id)
     if not tokens:
         return error('Нет готовых токенов для скачивания', 404)
     body = '\n'.join(tokens) + '\n'
@@ -711,7 +753,9 @@ def stop_pipeline():
     global stop_requested
     if pipeline is None or not pipeline.running:
         return error('В этом процессе обработка не запущена', 409)
-    with state_lock:
+    with export_job_lock:
+        if export_job['running']:
+            return error('Дождитесь завершения выгрузки перед остановкой', 409)
         if stop_requested:
             return jsonify(success=True, stopping=True), 202
         stop_requested = True
@@ -745,19 +789,38 @@ def run_dashboard(host='127.0.0.1', port=5000, debug=False):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Защищённая панель мониторинга без запуска обработчиков')
+    parser = argparse.ArgumentParser(description='Защищённая панель; --with-worker включает обработку')
     parser.add_argument('--config', help='Путь к config.json')
+    parser.add_argument('--with-worker', action='store_true', help='Запустить обработчик и панель в одном процессе')
     args = parser.parse_args()
+    load_env_file(PROJECT_ROOT / '.env')
     configuration = load_config(args.config)
     dashboard_settings(configuration)
     log_path = Path(configuration.get('logging', {}).get('file', PROJECT_ROOT / 'data/logs/pipeline.log'))
     log_path.parent.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                         handlers=[logging.FileHandler(log_path, encoding='utf-8'), logging.StreamHandler()])
-    init_dashboard(None, configuration)
-    logger.info('Панель мониторинга доступна по настроенному адресу; вход обязателен')
-    run_dashboard(configuration.get('dashboard', {}).get('host', '127.0.0.1'),
-                  int(configuration.get('dashboard', {}).get('port', 5000)))
+    worker = None
+    if args.with_worker:
+        from main import check_config
+        from core.pipeline import TokenPipeline
+        if not check_config(configuration):
+            parser.error('Исправьте конфигурацию обработчика')
+        worker = TokenPipeline(configuration, config_path=str(Path(args.config or PROJECT_ROOT / 'config.json').resolve()))
+    init_dashboard(worker, configuration, config_file=args.config)
+    def terminate(signum, frame):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, terminate)
+    try:
+        if worker is not None:
+            worker.start()
+        run_dashboard(configuration.get('dashboard', {}).get('host', '127.0.0.1'),
+                      int(configuration.get('dashboard', {}).get('port', 5000)))
+    except KeyboardInterrupt:
+        logger.info('Остановка сервиса')
+    finally:
+        if worker is not None:
+            worker.stop()
 
 
 if __name__ == '__main__':
