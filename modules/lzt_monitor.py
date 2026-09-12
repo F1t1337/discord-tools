@@ -12,12 +12,36 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 
+class PurchaseError(RuntimeError):
+    """Ошибка покупки товара на LZT Market.
+
+    out_of_balance=True — денег на балансе не хватает, задачу нужно остановить.
+    retryable=True — временная (сеть/ретрай), товар можно пропустить.
+    """
+
+    def __init__(self, message: str, *, out_of_balance: bool = False, retryable: bool = False):
+        super().__init__(message)
+        self.out_of_balance = out_of_balance
+        self.retryable = retryable
+
+
 class LZTMonitor:
     """Класс для мониторинга покупок на LZT Market"""
-    
+
     BASE_URL = "https://prod-api.lzt.market"
     DISCORD_CATEGORY_ID = 22  # ID категории Discord
-    
+    # Путь категории Discord для поиска на маркете
+    DISCORD_CATEGORY = "discord"
+    # Фиксированные фильтры поиска (из сохранённой ссылки пользователя).
+    # UI-only параметры auto_buy_link_id / search_id намеренно не отправляем.
+    MARKET_FILTERS = {
+        'reg_period': 'month',
+        'condition[]': ['nospam', 'spam', 'cleaned'],
+        'not_language[]': ['ru', 'uk'],
+        'not_country[]': ['ru', 'ua', 'by'],
+        'currency': 'rub',
+    }
+
     def __init__(self, api_token: str, check_interval: int = 60, min_balance_alert: float = 100, database=None):
         """
         Инициализация LZT монитора
@@ -43,35 +67,131 @@ class LZTMonitor:
         # НОВОЕ: Флаг для отслеживания отправки уведомления о низком балансе
         self.low_balance_notification_sent = False
         
+    def _request(self, method: str, endpoint: str, params: Dict = None, timeout: int = 10):
+        """
+        Низкоуровневый запрос к API LZT.
+
+        Returns:
+            (status_code, json_body_or_None). При сетевой ошибке — (None, None).
+            Запросы к LZT не проксируются — используется прямое соединение.
+        """
+        url = f"{self.BASE_URL}{endpoint}"
+        try:
+            response = requests.request(method, url, headers=self.headers,
+                                        params=params, timeout=timeout)
+        except requests.exceptions.RequestException as e:
+            logger.error(f"❌ Ошибка запроса к LZT API: {type(e).__name__}")
+            return None, None
+        try:
+            body = response.json()
+        except ValueError:
+            body = None
+        if response.status_code == 401:
+            logger.error("❌ LZT API: Неверный токен авторизации")
+        elif response.status_code != 200:
+            logger.error(f"❌ LZT API error: {response.status_code}")
+        return response.status_code, body
+
     def _make_request(self, endpoint: str, params: Dict = None) -> Optional[Dict]:
         """
-        Выполняет запрос к API LZT
-        
-        Args:
-            endpoint: Эндпоинт API
-            params: Параметры запроса
-            
+        Выполняет GET-запрос к API LZT (обратно совместимая обёртка).
+
         Returns:
             Ответ API в виде словаря или None при ошибке
         """
-        url = f"{self.BASE_URL}{endpoint}"
-        
+        status, body = self._request('GET', endpoint, params=params)
+        if status == 200 and isinstance(body, dict):
+            return body
+        return None
+
+    # ==================== ПОИСК И ПОКУПКА ====================
+
+    def search_accounts(self, pmax: float, chat_min: int, page: int = 1,
+                        order_by: str = 'price_to_up') -> (List[Dict], int):
+        """
+        Ищет аккаунты Discord на маркете по фиксированным фильтрам + пользовательским.
+
+        Args:
+            pmax: максимальная цена (₽)
+            chat_min: минимум чатов на аккаунте
+            page: страница выдачи (с 1)
+            order_by: сортировка (по умолчанию — сначала дешёвые)
+
+        Returns:
+            (items, total_items). items — список товаров текущей страницы;
+            total_items — общее число подходящих под фильтр (из поля totalItems).
+        """
+        params = dict(self.MARKET_FILTERS)
+        params.update({'pmax': pmax, 'chat_min': chat_min,
+                       'order_by': order_by, 'page': page})
+        data = self._make_request(f"/{self.DISCORD_CATEGORY}", params=params)
+        if not isinstance(data, dict):
+            return [], 0
+        items = data.get('items') or []
+        if not isinstance(items, list):
+            items = []
+        total = data.get('totalItems')
         try:
-            response = requests.get(url, headers=self.headers, params=params, timeout=10)
-            
-            if response.status_code == 200:
-                return response.json()
-            elif response.status_code == 401:
-                logger.error("❌ LZT API: Неверный токен авторизации")
-                return None
-            else:
-                logger.error(f"❌ LZT API error: {response.status_code} - {response.text}")
-                return None
-                
-        except requests.exceptions.RequestException as e:
-            logger.error(f"❌ Ошибка запроса к LZT API: {e}")
-            return None
-    
+            total = int(total)
+        except (TypeError, ValueError):
+            total = len(items)
+        return items, total
+
+    def get_item(self, item_id: int) -> Optional[Dict]:
+        """Возвращает данные товара (после покупки содержит логин/токен) или None."""
+        status, body = self._request('GET', f"/{item_id}", timeout=20)
+        if status == 200 and isinstance(body, dict):
+            return body.get('item') or body
+        return None
+
+    def fast_buy(self, item_id: int, price: float):
+        """
+        Мгновенно покупает товар: POST /{item_id}/fast-buy.
+
+        LZT сам проверяет валидность аккаунта и покупает; price передаётся для
+        сверки — при расхождении цены покупка отклоняется.
+
+        Returns:
+            (token, item) при успехе.
+
+        Raises:
+            PurchaseError: покупка не удалась. out_of_balance=True — остановить задачу;
+                           иначе товар пропускаем (мёртвый/продан/временная ошибка).
+        """
+        params = {'price': price, 'currency': 'rub'}
+        status, body = self._request('POST', f"/{item_id}/fast-buy",
+                                     params=params, timeout=30)
+        if status is None:
+            raise PurchaseError('network error', retryable=True)
+        if not isinstance(body, dict):
+            body = {}
+
+        if status == 200:
+            item = body.get('item') or body
+            token = self._extract_discord_token(item)
+            if not token:
+                # Иногда логин отдаётся отдельным запросом карточки товара.
+                fetched = self.get_item(item_id)
+                if fetched:
+                    token = self._extract_discord_token(fetched)
+                    if token:
+                        item = fetched
+            if not token:
+                raise PurchaseError('token not found in purchased item')
+            return token, item
+
+        # Разбор ошибки
+        message = ''
+        errors = body.get('errors')
+        if isinstance(errors, list) and errors:
+            message = str(errors[0])
+        elif isinstance(errors, str):
+            message = errors
+        if not message:
+            message = str(body.get('error') or body.get('message') or f'HTTP {status}')
+        out_of_balance = 'balance' in message.lower() or 'баланс' in message.lower()
+        raise PurchaseError(message, out_of_balance=out_of_balance)
+
     def get_balance(self) -> Optional[float]:
         """
         Получает текущий баланс пользователя

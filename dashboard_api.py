@@ -425,8 +425,6 @@ def get_settings():
         database_file=Path(db.db_path).name,
         worker_connected=pipeline is not None,
         monitoring_only=pipeline is None,
-        lzt_enabled=bool(getattr(pipeline, 'lzt_enabled', config.get('lzt', {}).get('enabled'))
-                         if pipeline is not None else config.get('lzt', {}).get('enabled')),
         close_channels=bool(getattr(pipeline, 'close_channels', config.get('cleaner', {}).get('close_channels'))
                             if pipeline is not None else config.get('cleaner', {}).get('close_channels')),
         validator_workers=config.get('validator', {}).get('max_workers', 0),
@@ -648,21 +646,112 @@ def lzt_balance():
                    enabled=bool(config.get('lzt', {}).get('enabled')), available=True)
 
 
+# ==================== ЗАДАЧА ПОКУПКИ АККАУНТОВ ====================
+
+MAX_PURCHASE_COUNT = 1000
+
+
+def _purchase_params(pmax, chat_min):
+    """Проверяет и приводит параметры фильтра. Бросает ValueError при ошибке."""
+    try:
+        pmax = float(pmax)
+        chat_min = int(chat_min)
+    except (TypeError, ValueError):
+        raise ValueError('params')
+    if not (0 < pmax <= 100000) or not (0 <= chat_min <= 1000000):
+        raise ValueError('range')
+    return pmax, chat_min
+
+
+@app.get('/api/purchase/estimate')
+def purchase_estimate():
+    if pipeline is None or not hasattr(pipeline, 'estimate_purchase'):
+        return error('Задача покупки доступна только при запущенной обработке', 503)
+    try:
+        pmax, chat_min = _purchase_params(request.args.get('pmax'), request.args.get('chat_min'))
+    except ValueError:
+        return error('Укажите корректные цену (1–100000) и минимум чатов (0–1000000)')
+    try:
+        result = pipeline.estimate_purchase(pmax, chat_min)
+    except Exception as exc:
+        logger.error('Ошибка оценки задачи покупки: %s', type(exc).__name__)
+        return error('Не удалось получить данные с LZT. Проверьте токен и попробуйте позже.', 502)
+    return jsonify(result)
+
+
+@app.post('/api/purchase/start')
+def purchase_start():
+    if pipeline is None or not pipeline.running or stop_requested:
+        return error('Запуск задачи доступен только при запущенной обработке', 503)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return error('Нужен JSON-объект')
+    try:
+        pmax, chat_min = _purchase_params(data.get('pmax'), data.get('chat_min'))
+    except ValueError:
+        return error('Укажите корректные цену (1–100000) и минимум чатов (0–1000000)')
+    count = data.get('count')
+    workers = data.get('cleaner_workers')
+    if not isinstance(count, int) or isinstance(count, bool) or not 1 <= count <= MAX_PURCHASE_COUNT:
+        return error(f'Количество аккаунтов должно быть от 1 до {MAX_PURCHASE_COUNT}')
+    if not isinstance(workers, int) or isinstance(workers, bool) or not 1 <= workers <= 200:
+        return error('Число потоков очистки должно быть от 1 до 200')
+    if pipeline.purchase.is_active():
+        return error('Задача покупки уже выполняется', 409)
+    # Сверяем запрос с балансом на стороне сервера, чтобы не купить сверх доступного.
+    try:
+        estimate = pipeline.estimate_purchase(pmax, chat_min)
+    except Exception as exc:
+        logger.error('Ошибка проверки перед запуском задачи: %s', type(exc).__name__)
+        return error('Не удалось получить данные с LZT. Попробуйте позже.', 502)
+    affordable = estimate.get('max_affordable') or 0
+    if affordable <= 0:
+        return error('Недостаточно баланса или нет подходящих аккаунтов', 409)
+    if count > affordable:
+        return error(f'Доступно к покупке не больше {affordable} аккаунтов на текущий баланс', 409)
+    try:
+        state = pipeline.start_purchase(pmax, chat_min, count, workers)
+    except RuntimeError as exc:
+        return error(str(exc), 409)
+    except Exception as exc:
+        logger.error('Ошибка запуска задачи покупки: %s', type(exc).__name__)
+        return error('Не удалось запустить задачу', 500)
+    return jsonify(success=True, state=state), 202
+
+
+@app.get('/api/purchase/status')
+def purchase_status():
+    if pipeline is None or not hasattr(pipeline, 'purchase_status'):
+        return jsonify(available=False, status='idle')
+    result = pipeline.purchase_status()
+    result['available'] = True
+    result['worker_running'] = bool(pipeline.running and not stop_requested)
+    return jsonify(result)
+
+
+@app.post('/api/purchase/stop')
+def purchase_stop():
+    if pipeline is None or not hasattr(pipeline, 'stop_purchase'):
+        return error('Задача покупки недоступна', 503)
+    if not pipeline.purchase.is_active():
+        return error('Активной задачи покупки нет', 409)
+    pipeline.stop_purchase()
+    return jsonify(success=True, stopping=True), 202
+
+
 @app.post('/api/settings/toggle')
 def toggle_setting():
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         return error('Нужен JSON-объект')
     key, value = data.get('key'), data.get('value')
-    if key not in {'close_channels', 'lzt_enabled'} or not isinstance(value, bool):
+    if key != 'close_channels' or not isinstance(value, bool):
         return error('Неверные параметры переключателя')
     if pipeline is not None:
-        applied = (pipeline.set_close_channels(value) if key == 'close_channels'
-                   else pipeline.set_lzt_enabled(value))
+        applied = pipeline.set_close_channels(value)
         return jsonify(success=True, key=key, value=applied, live=True)
     # Режим мониторинга: только сохраняем в config.json.
-    section, name = ('cleaner', 'close_channels') if key == 'close_channels' else ('lzt', 'enabled')
-    persist_config_value(section, name, value)
+    persist_config_value('cleaner', 'close_channels', value)
     return jsonify(success=True, key=key, value=value, live=False)
 
 

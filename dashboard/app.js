@@ -2,6 +2,7 @@
 const $ = id => document.getElementById(id);
 const titles = {
   overview: ['Обзор', 'Текущее состояние системы и последние изменения.'],
+  purchase: ['Задача покупки', 'Покупка аккаунтов с LZT по фильтрам и обработка в реальном времени.'],
   accounts: ['Аккаунты', 'Поиск и просмотр записей без раскрытия токенов доступа.'],
   tokens: ['Токены', 'Загрузка токенов в обработку и выгрузка готовых.'],
   network: ['Сеть и лимиты', 'Закрепление прокси и ответы Discord за последние 1 и 5 минут.'],
@@ -129,13 +130,15 @@ async function loadView() {
       result = await Promise.all([api('/status', opts), api('/statistics/today', opts), api('/statistics/range?days=' + $('chart-days').value, opts)]);
     } else if (view === 'accounts') {
       result = await api('/accounts?' + new URLSearchParams({limit:pageSize, offset:accountOffset, status:$('account-status').value, search:$('account-search').value.trim()}), opts);
-    } else if (view === 'proxies') result = await api('/proxies', opts);
+    } else if (view === 'purchase') result = await api('/purchase/status', opts);
+    else if (view === 'proxies') result = await api('/proxies', opts);
     else if (view === 'network') result = await api('/network', opts);
     else if (view === 'tokens') result = await api('/tokens/export/status', opts);
     else if (view === 'logs') result = await api('/logs?limit=100&level=' + $('log-level').value, opts);
     else result = await Promise.all([api('/settings', opts), api('/lzt/balance', opts)]);
     if (generation !== requestGeneration || !loggedIn) return;
     if (view === 'overview') renderOverview(...result);
+    else if (view === 'purchase') renderPurchase(result);
     else if (view === 'accounts') renderAccounts(result);
     else if (view === 'proxies') renderProxies(result);
     else if (view === 'network') renderNetwork(result);
@@ -356,6 +359,50 @@ function renderTokens(job) {
   select.disabled = !history.length;
   $('token-download').disabled = !history.length;
 }
+let purchaseMax = null;
+function renderPurchase(s) {
+  s = s || {};
+  const running = s.status === 'running' || s.status === 'stopping';
+  $('purchase-worker-note').hidden = !!s.worker_running;
+  const p = s.pipeline || {};
+  const metrics = [
+    ['Куплено', s.bought || 0, 'Успешных покупок', '🛒'],
+    ['Пропущено мёртвых', s.skipped_dead || 0, 'Отбраковано при покупке', '⊘'],
+    ['В очистке', p.cleaning || 0, 'Сейчас очищаются', '↻'],
+    ['Готово', p.ready || 0, 'Состояние ready', '✓'],
+  ];
+  $('purchase-metrics').replaceChildren(...metrics.map(([title, value, note, icon]) => {
+    const card = element('article', null, 'metric'), label = element('div', title, 'metric-label');
+    label.append(element('span', icon, 'metric-icon'));
+    card.append(label, element('p', number(value), 'metric-value'), element('p', note, 'metric-note'));
+    return card;
+  }));
+  const statusText = {idle: 'Задача не запущена', running: 'Задача выполняется', stopping: 'Останавливается',
+    done: 'Задача завершена', error: 'Задача прервана'}[s.status] || '—';
+  const banner = $('purchase-banner');
+  if (s.status && s.status !== 'idle') {
+    banner.hidden = false;
+    banner.className = 'alert ' + (s.status === 'error' ? 'error' : running ? '' : 'warning');
+    banner.textContent = statusText + (s.message ? ' · ' + s.message : '');
+  } else banner.hidden = true;
+  details('purchase-stats', [
+    ['Статус', statusText],
+    ['Запрошено', number(s.requested || 0)],
+    ['Куплено', number(s.bought || 0)],
+    ['Проверено при покупке', number(s.checked || 0)],
+    ['Пропущено (мёртвые/продан)', number(s.skipped_dead || 0)],
+    ['Ошибок', number(s.errors || 0)],
+    ['Потрачено', money(s.spent || 0)],
+    ['Баланс LZT', s.balance == null ? '—' : money(s.balance)],
+    ['В валидации', number((p.new || 0) + (p.validated || 0))],
+    ['В очистке', number(p.cleaning || 0)],
+    ['Очищено (ждут финальной)', number(p.cleaned || 0)],
+    ['Готово к выгрузке', number(p.ready || 0)],
+    ['Невалидные', number(p.invalid || 0)],
+  ]);
+  $('purchase-stop').disabled = !running;
+  $('purchase-start').disabled = running || !s.worker_running || !(purchaseMax > 0);
+}
 function renderLogs(result) {
   if (!result.items.length) return empty('log-entries',result.available?'Событий не найдено':'Журнал ещё не создан',result.available?'Выберите другой уровень или дождитесь новых событий.':'Записи появятся после первого события приложения.');
   $('log-entries').replaceChildren(...result.items.map(item=>{
@@ -371,10 +418,9 @@ function renderSettings(result, balance) {
   $('cleaner-workers-note').textContent = result.monitoring_only
     ? 'Рабочий процесс не подключён — изменение сохранится в конфиге и применится при следующем запуске.'
     : 'Применяется на лету: потоки добавляются или завершаются после текущего токена.';
-  const lzt = $('toggle-lzt'), close = $('toggle-close');
-  if (document.activeElement !== lzt) lzt.checked = !!result.lzt_enabled;
+  const close = $('toggle-close');
   if (document.activeElement !== close) close.checked = !!result.close_channels;
-  lzt.disabled = close.disabled = false;
+  close.disabled = false;
   balance = balance || {};
   const bal = balance.balance == null ? (balance.available ? '—' : 'Нет данных процесса') : money(balance.balance);
   details('balance-summary',[['Баланс LZT',bal],['Порог оповещения',money(balance.min_balance||0)]]);
@@ -452,8 +498,44 @@ async function toggleSetting(key, checkbox){
   catch(error){checkbox.checked=!value; toast(error.message);}
   finally{checkbox.disabled=false;}
 }
-$('toggle-lzt').addEventListener('change',()=>toggleSetting('lzt_enabled',$('toggle-lzt')));
 $('toggle-close').addEventListener('change',()=>toggleSetting('close_channels',$('toggle-close')));
+$('purchase-estimate-btn').addEventListener('click',async()=>{
+  const pmax=parseFloat($('purchase-pmax').value), chatmin=parseInt($('purchase-chatmin').value,10);
+  if (!(pmax>0)||!Number.isInteger(chatmin)||chatmin<0) return toast('Введите цену и минимум чатов');
+  const btn=$('purchase-estimate-btn'); btn.disabled=true;
+  try {
+    const r=await api('/purchase/estimate?'+new URLSearchParams({pmax,chat_min:chatmin}));
+    purchaseMax=r.max_affordable||0;
+    details('purchase-estimate',[
+      ['Подходящих аккаунтов',number(r.count)+(r.truncated?' (сумма по '+number(r.collected)+')':'')],
+      ['Суммарная стоимость',money(r.total_cost)],
+      ['Баланс LZT',r.balance==null?'—':money(r.balance)],
+      ['Можно купить на баланс',number(r.max_affordable)],
+    ]);
+    const cnt=$('purchase-count'); cnt.max=Math.max(1,purchaseMax);
+    if (!cnt.value||parseInt(cnt.value,10)>purchaseMax) cnt.value=purchaseMax||'';
+    $('purchase-hint').textContent=purchaseMax>0?('Доступно к покупке: '+number(purchaseMax)+' аккаунтов.'):'Нет доступных к покупке аккаунтов (баланс или фильтр).';
+    $('purchase-start').disabled=!(purchaseMax>0);
+    toast('Найдено '+number(r.count)+' аккаунтов');
+  } catch(error){toast(error.message);}
+  finally{btn.disabled=false;}
+});
+$('purchase-start').addEventListener('click',async()=>{
+  const pmax=parseFloat($('purchase-pmax').value), chatmin=parseInt($('purchase-chatmin').value,10);
+  const count=parseInt($('purchase-count').value,10), workers=parseInt($('purchase-workers').value,10);
+  if (!(count>=1)) return toast('Укажите количество аккаунтов');
+  if (!(workers>=1&&workers<=200)) return toast('Потоки очистки: 1–200');
+  if (purchaseMax!=null&&count>purchaseMax) return toast('Не больше '+number(purchaseMax)+' на баланс');
+  if (!await confirmAction('Запустить покупку?','Будет куплено до '+number(count)+' аккаунтов, максимум '+money(pmax*count)+' (по '+money(pmax)+' за шт.). Тратятся реальные деньги.')) return;
+  const btn=$('purchase-start'); btn.disabled=true;
+  try { await api('/purchase/start',{method:'POST',body:JSON.stringify({pmax,chat_min:chatmin,count,cleaner_workers:workers})}); toast('Задача запущена'); await loadView(); }
+  catch(error){toast(error.message); btn.disabled=false;}
+});
+$('purchase-stop').addEventListener('click',async()=>{
+  if (!await confirmAction('Остановить задачу?','Новые покупки прекратятся. Уже купленные аккаунты продолжат обработку.')) return;
+  try { await api('/purchase/stop',{method:'POST',body:'{}'}); toast('Остановка задачи'); await loadView(); }
+  catch(error){toast(error.message);}
+});
 $('token-upload').addEventListener('click',async()=>{
   const raw=$('token-input').value.trim();
   if (!raw) return toast('Вставьте токены');

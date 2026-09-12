@@ -38,6 +38,7 @@
       <p class="section-label nav-label">РАБОЧЕЕ ПРОСТРАНСТВО</p>
       <nav aria-label="Основная навигация">
         <a href="#overview" data-view="overview"><span aria-hidden="true">◫</span>Обзор</a>
+        <a href="#purchase" data-view="purchase"><span aria-hidden="true">🛒</span>Задача покупки</a>
         <a href="#accounts" data-view="accounts"><span aria-hidden="true">▤</span>Аккаунты</a>
         <a href="#tokens" data-view="tokens"><span aria-hidden="true">⇩</span>Токены</a>
         <a href="#network" data-view="network"><span aria-hidden="true">↯</span>Сеть и лимиты</a>
@@ -68,6 +69,45 @@
           <article class="panel"><div class="panel-heading"><div><p class="section-label">СЕГОДНЯ</p><h2>Показатели за день</h2></div></div><dl id="today-summary" class="detail-list"></dl></article>
           <article class="panel"><div class="panel-heading"><div><p class="section-label">СЕРВЕР</p><h2>Состояние приложения</h2></div></div><dl id="server-summary" class="detail-list"></dl></article>
         </div>
+      </section>
+
+      <section id="view-purchase" class="view" aria-label="Задача покупки" hidden>
+        <div id="purchase-worker-note" class="alert warning" hidden>Обработка не запущена. Задача покупки недоступна: запустите сервис с обработчиком.</div>
+        <div class="metrics" id="purchase-metrics"></div>
+        <div id="purchase-banner" class="alert" role="status" hidden></div>
+        <div class="settings-grid">
+          <article class="panel">
+            <div class="panel-heading"><div><p class="section-label">ФИЛЬТР</p><h2>Расчёт покупки</h2></div></div>
+            <p class="muted">Укажите максимальную цену и минимум чатов на аккаунте. Остальные фильтры (язык, страна, состояние, срок регистрации) заданы заранее. Запросы к LZT не проксируются.</p>
+            <div class="worker-control">
+              <label for="purchase-pmax">Макс. цена, ₽</label>
+              <input id="purchase-pmax" type="number" min="1" max="100000" step="1" inputmode="numeric" value="80">
+              <label for="purchase-chatmin">Мин. чатов</label>
+              <input id="purchase-chatmin" type="number" min="0" max="1000000" step="1" inputmode="numeric" value="60">
+              <button id="purchase-estimate-btn" class="button primary">Рассчитать</button>
+            </div>
+            <dl id="purchase-estimate" class="detail-list"></dl>
+          </article>
+          <article class="panel">
+            <div class="panel-heading"><div><p class="section-label">ЗАПУСК</p><h2>Параметры задачи</h2></div></div>
+            <p class="muted">Сколько аккаунтов купить (не больше доступного на баланс) и во сколько потоков очищать. Мёртвые аккаунты отбраковываются — итог может быть меньше запроса.</p>
+            <div class="worker-control">
+              <label for="purchase-count">Кол-во аккаунтов</label>
+              <input id="purchase-count" type="number" min="1" max="1000" step="1" inputmode="numeric">
+              <label for="purchase-workers">Потоки очистки</label>
+              <input id="purchase-workers" type="number" min="1" max="200" step="1" inputmode="numeric" value="20">
+            </div>
+            <div class="panel-action proxy-actions">
+              <button id="purchase-start" class="button primary" disabled>Запустить задачу</button>
+              <button id="purchase-stop" class="button danger" disabled>Остановить задачу</button>
+            </div>
+            <p class="muted" id="purchase-hint">Сначала нажмите «Рассчитать», чтобы узнать доступное количество.</p>
+          </article>
+        </div>
+        <article class="panel">
+          <div class="panel-heading"><div><p class="section-label">СТАТИСТИКА ЗАДАЧИ</p><h2>В реальном времени</h2></div></div>
+          <dl id="purchase-stats" class="detail-list"></dl>
+        </article>
       </section>
 
       <section id="view-accounts" class="view" aria-label="Аккаунты" hidden>
@@ -138,7 +178,7 @@
       </section>
 
       <section id="view-settings" class="view" aria-label="Настройки" hidden>
-        <div class="settings-grid"><article class="panel"><div class="panel-heading"><div><p class="section-label">БЕЗОПАСНОСТЬ</p><h2>Доступ к панели</h2></div></div><dl id="security-settings" class="detail-list"></dl><div class="panel-action"><button id="revoke-sessions" class="button danger">Завершить все сессии</button><p class="muted">Включая текущую. После этого потребуется войти снова.</p></div></article><article class="panel"><div class="panel-heading"><div><p class="section-label">КОНФИГУРАЦИЯ</p><h2>Настройки сервера</h2></div></div><dl id="server-settings" class="detail-list"></dl><p class="settings-hint">Пароль и список владельцев задаются на сервере. После изменения перезапустите сервис.</p></article><article class="panel"><div class="panel-heading"><div><p class="section-label">ОБРАБОТКА</p><h2>Потоки очистки</h2></div></div><p class="muted">Сколько токенов очищается одновременно. Каждому потоку выдаётся отдельный прокси из пула.</p><div class="worker-control"><label class="sr-only" for="cleaner-workers">Число потоков очистки</label><input id="cleaner-workers" type="number" min="1" max="200" step="1" inputmode="numeric"><button id="cleaner-workers-apply" class="button primary">Применить</button></div><p class="muted" id="cleaner-workers-note"></p></article><article class="panel"><div class="panel-heading"><div><p class="section-label">УПРАВЛЕНИЕ</p><h2>Переключатели и баланс</h2></div></div><div class="toggle-row"><div><strong>Получение с LZT</strong><small>Автозабор аккаунтов с lolz</small></div><label class="switch"><input type="checkbox" id="toggle-lzt"><span class="slider" aria-hidden="true"></span></label></div><div class="toggle-row"><div><strong>Закрытие чатов при очистке</strong><small>Закрывать чаты со спам-ссылками</small></div><label class="switch"><input type="checkbox" id="toggle-close"><span class="slider" aria-hidden="true"></span></label></div><dl id="balance-summary" class="detail-list"></dl></article></div>
+        <div class="settings-grid"><article class="panel"><div class="panel-heading"><div><p class="section-label">БЕЗОПАСНОСТЬ</p><h2>Доступ к панели</h2></div></div><dl id="security-settings" class="detail-list"></dl><div class="panel-action"><button id="revoke-sessions" class="button danger">Завершить все сессии</button><p class="muted">Включая текущую. После этого потребуется войти снова.</p></div></article><article class="panel"><div class="panel-heading"><div><p class="section-label">КОНФИГУРАЦИЯ</p><h2>Настройки сервера</h2></div></div><dl id="server-settings" class="detail-list"></dl><p class="settings-hint">Пароль и список владельцев задаются на сервере. После изменения перезапустите сервис.</p></article><article class="panel"><div class="panel-heading"><div><p class="section-label">ОБРАБОТКА</p><h2>Потоки очистки</h2></div></div><p class="muted">Сколько токенов очищается одновременно. Каждому потоку выдаётся отдельный прокси из пула.</p><div class="worker-control"><label class="sr-only" for="cleaner-workers">Число потоков очистки</label><input id="cleaner-workers" type="number" min="1" max="200" step="1" inputmode="numeric"><button id="cleaner-workers-apply" class="button primary">Применить</button></div><p class="muted" id="cleaner-workers-note"></p></article><article class="panel"><div class="panel-heading"><div><p class="section-label">УПРАВЛЕНИЕ</p><h2>Переключатели и баланс</h2></div></div><div class="toggle-row"><div><strong>Закрытие чатов при очистке</strong><small>Закрывать чаты со спам-ссылками</small></div><label class="switch"><input type="checkbox" id="toggle-close"><span class="slider" aria-hidden="true"></span></label></div><dl id="balance-summary" class="detail-list"></dl></article></div>
       </section>
       <footer class="page-footer"><span>DISCORD TOOLS</span><span id="last-updated">Данные ещё не загружены</span></footer>
     </main>

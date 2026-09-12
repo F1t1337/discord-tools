@@ -9,7 +9,7 @@ textarea:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px #b4a
 .proxy-input{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.8125rem;margin-top:14px}
 .proxy-actions{display:flex;flex-wrap:wrap;gap:10px}
 .proxy-actions .button{flex:1;min-width:140px}
-.worker-control{display:flex;gap:12px;align-items:center;margin-top:6px}
+.worker-control{display:flex;gap:12px;align-items:center;margin-top:6px;flex-wrap:wrap}
 .worker-control input{width:120px}
 .worker-control .button{flex-shrink:0}
 .toggle-row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--line)}

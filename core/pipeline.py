@@ -6,6 +6,7 @@ from queue import Queue
 from typing import Dict
 
 from modules.lzt_monitor import LZTMonitor
+from modules.purchase_task import PurchaseTaskManager
 from modules.validator import TokenValidator, ValidationUnavailable
 from modules.cleaner import process_token
 from modules.discord_transport import DiscordTransport
@@ -47,9 +48,6 @@ class TokenPipeline:
         # Закрывать ли чаты при очистке (переключается из Telegram)
         self.close_channels = bool(config.get('cleaner', {}).get('close_channels', True))
 
-        # Получать ли новые аккаунты с lolz/LZT (переключается из Telegram)
-        self.lzt_enabled = bool(config.get('lzt', {}).get('enabled', True))
-        
         # Очереди для передачи между этапами
         self.new_tokens_queue = Queue()      # Новые токены из LZT
         self.validated_queue = Queue()       # Прошедшие первую валидацию
@@ -80,14 +78,14 @@ class TokenPipeline:
         # Database (нужна для LZT Monitor)
         self.db = Database(self.config['database']['path'])
         
-        # LZT Monitor
+        # LZT Market клиент: баланс, поиск и покупка аккаунтов (без роли монитора)
         self.lzt_monitor = LZTMonitor(
             api_token=self.config['lzt']['api_token'],
-            check_interval=self.config['lzt']['check_interval'],
-            min_balance_alert=self.config['lzt']['min_balance_alert'],
+            check_interval=self.config['lzt'].get('check_interval', 60),
+            min_balance_alert=self.config['lzt'].get('min_balance_alert', 100),
             database=self.db  # Передаем БД для проверки дубликатов
         )
-        
+
         from modules.cleaner import ProxyManager
         self.proxy_manager = ProxyManager(db=self.db) if self.config.get('proxy', {}).get('enabled') else None
         self.discord_transport = DiscordTransport(self.proxy_manager)
@@ -109,6 +107,14 @@ class TokenPipeline:
         # Cloudflare Tunnel Helper
         self.cloudflare = CloudflareHelper()
 
+        # Менеджер задачи покупки аккаунтов с LZT Market
+        self.purchase = PurchaseTaskManager(
+            lzt_monitor=self.lzt_monitor,
+            db=self.db,
+            intake_cb=self.enqueue_purchased,
+            set_cleaner_workers_cb=self.set_cleaner_workers,
+        )
+
         logger.info("✅ Все модули инициализированы")
     
     def _register_bot_commands(self):
@@ -120,7 +126,6 @@ class TokenPipeline:
         self.telegram.register_command_handler('upload_tokens', self._handle_upload_tokens_command)
         self.telegram.register_command_handler('settings', self._handle_settings_command)
         self.telegram.register_command_handler('toggle_close_channels', self._handle_toggle_close_channels_command)
-        self.telegram.register_command_handler('toggle_lzt', self._handle_toggle_lzt_command)
         self.telegram.register_token_upload_handler(self._handle_tokens_uploaded)
 
         logger.info("✅ Команды Telegram бота зарегистрированы")
@@ -580,7 +585,6 @@ class TokenPipeline:
         try:
             self.telegram.send_settings_menu(
                 close_channels=self.close_channels,
-                lzt_enabled=self.lzt_enabled,
                 chat_id=chat_id,
                 message_id=message_id,
             )
@@ -600,32 +604,11 @@ class TokenPipeline:
 
             self.telegram.send_settings_menu(
                 close_channels=self.close_channels,
-                lzt_enabled=self.lzt_enabled,
                 chat_id=chat_id,
                 message_id=message_id,
             )
         except Exception as e:
             logger.error(f"❌ Ошибка переключения закрытия чатов: {e}")
-            self.telegram.send_error("Settings", str(e))
-
-    def _handle_toggle_lzt_command(self, chat_id: str = None, message_id: int = None):
-        """Переключает получение аккаунтов с lolz/LZT и сохраняет настройку."""
-        try:
-            new_value = not self.lzt_enabled
-            self._persist_config_value('lzt', 'enabled', new_value)
-            self.lzt_enabled = new_value
-
-            state = "включено" if self.lzt_enabled else "выключено"
-            logger.info(f"⚙️ Получение аккаунтов с lolz: {state}")
-
-            self.telegram.send_settings_menu(
-                close_channels=self.close_channels,
-                lzt_enabled=self.lzt_enabled,
-                chat_id=chat_id,
-                message_id=message_id,
-            )
-        except Exception as e:
-            logger.error(f"❌ Ошибка переключения получения аккаунтов с lolz: {e}")
             self.telegram.send_error("Settings", str(e))
 
     def _persist_config_value(self, section: str, key: str, value):
@@ -644,13 +627,6 @@ class TokenPipeline:
         logger.info(f"⚙️ Закрытие чатов при очистке: {'включено' if self.close_channels else 'выключено'}")
         return self.close_channels
 
-    def set_lzt_enabled(self, value: bool) -> bool:
-        """Включает/выключает получение аккаунтов с lolz/LZT и сохраняет настройку."""
-        self._persist_config_value('lzt', 'enabled', bool(value))
-        self.lzt_enabled = bool(value)
-        logger.info(f"⚙️ Получение аккаунтов с lolz: {'включено' if self.lzt_enabled else 'выключено'}")
-        return self.lzt_enabled
-
     def get_lzt_balance(self):
         """Возвращает текущий баланс LZT или None при ошибке."""
         try:
@@ -658,6 +634,51 @@ class TokenPipeline:
         except Exception as e:
             logger.error(f"❌ Ошибка получения баланса LZT: {e}")
             return None
+
+    # ==================== ЗАДАЧА ПОКУПКИ АККАУНТОВ ====================
+
+    def enqueue_purchased(self, token: str, item_id=None, price: float = 0,
+                          seller_username: str = 'lzt_market'):
+        """Ставит купленный аккаунт в конвейер обработки.
+
+        Сохраняет запись в БД, обновляет статистику покупок и кладёт токен в очередь
+        первой валидации. Работает только при запущенном конвейере.
+        """
+        with self._intake_lock:
+            if not self.running:
+                raise RuntimeError('Обработка остановлена')
+            token_id = self.db.add_token(
+                token=token, lzt_item_id=item_id,
+                seller_username=seller_username, price=price)
+            if token_id is None:
+                return None  # дубликат — уже в БД
+            self.db.update_statistics(tokens_bought=1, money_spent=price or 0)
+            self.new_tokens_queue.put({
+                'token': token, 'item_id': item_id,
+                'username': 'LZT', 'seller_username': seller_username,
+                'price': price,
+            })
+            logger.info(f"🛒 Куплен аккаунт (item {item_id}) за {price} ₽ — в очереди обработки")
+            return token_id
+
+    def estimate_purchase(self, pmax: float, chat_min: int) -> dict:
+        """Оценка задачи: подходящих аккаунтов, стоимость, баланс, макс. к покупке."""
+        return self.purchase.estimate(pmax, chat_min)
+
+    def start_purchase(self, pmax: float, chat_min: int, count: int,
+                       cleaner_workers: int) -> dict:
+        """Запускает задачу покупки. Требует запущенный конвейер."""
+        if not self.running:
+            raise RuntimeError('Сначала запустите обработку')
+        return self.purchase.start(pmax, chat_min, count, cleaner_workers)
+
+    def stop_purchase(self) -> bool:
+        """Мягко останавливает задачу покупки (уже купленное продолжит обработку)."""
+        return self.purchase.stop()
+
+    def purchase_status(self) -> dict:
+        """Снимок состояния задачи покупки + стадии конвейера."""
+        return self.purchase.snapshot()
 
     @staticmethod
     def _parse_manual_tokens(raw_text: str):
@@ -809,75 +830,6 @@ class TokenPipeline:
         except Exception as e:
             logger.error(f"❌ Ошибка сброса очистки: {e}")
             return False
-    
-    # ==================== ЭТАП 1: МОНИТОРИНГ LZT ====================
-    
-    def _lzt_monitoring_worker(self):
-        """Поток мониторинга новых покупок на LZT"""
-        logger.info("🔍 [LZT] Запуск мониторинга...")
-        
-        while self.running:
-            try:
-                # Получение аккаунтов с lolz отключено — ждём, не опрашивая LZT
-                if not self.lzt_enabled:
-                    time.sleep(self.config['lzt']['check_interval'])
-                    continue
-
-                # Проверяем новые покупки
-                new_purchases = self.lzt_monitor.get_new_purchases()
-                
-                for purchase in new_purchases:
-                    # Проверяем есть ли токен уже в БД
-                    existing = self.db.get_token_info(purchase['token'])
-                    
-                    if existing:
-                        logger.debug(f"⏭️ [LZT] Токен {purchase['item_id']} уже в БД, пропускаем")
-                        continue
-                    
-                    # Добавляем в базу данных
-                    token_id = self.db.add_token(
-                        token=purchase['token'],
-                        lzt_item_id=purchase['item_id'],
-                        seller_username=purchase.get('seller_username', 'Unknown'),
-                        price=purchase['price']
-                    )
-                    
-                    if token_id:
-                        logger.info(f"➕ [LZT] Новая покупка: {purchase['username']} за {purchase['price']} ₽")
-                        
-                        # Обновляем статистику
-                        self.db.update_statistics(
-                            tokens_bought=1,
-                            money_spent=purchase['price']
-                        )
-                        
-                        # ВАЖНО: Отправляем в очередь валидации
-                        self.new_tokens_queue.put(purchase)
-                        logger.info(f"📥 [LZT] Токен добавлен в очередь валидации. Размер очереди: {self.new_tokens_queue.qsize()}")
-                        
-                        # Уведомление в Telegram
-                        self.telegram.send_new_purchase(
-                            item_id=purchase['item_id'],
-                            price=purchase['price'],
-                            username=purchase['username']
-                        )
-                
-                # Проверяем баланс
-                if self.lzt_monitor.check_balance_alert():
-                    balance = self.lzt_monitor.get_balance()
-                    if balance:
-                        self.telegram.send_balance_alert(
-                            current_balance=balance,
-                            min_balance=self.config['lzt']['min_balance_alert']
-                        )
-                
-                # Ждем до следующей проверки
-                time.sleep(self.config['lzt']['check_interval'])
-                
-            except Exception as e:
-                logger.error(f"❌ [LZT] Ошибка: {e}")
-                self.telegram.send_error("LZT Monitor", str(e))
-                time.sleep(60)
     
     # ==================== ЭТАП 2: ПЕРВАЯ ВАЛИДАЦИЯ ====================
     
@@ -1167,13 +1119,9 @@ class TokenPipeline:
             level="SUCCESS"
         )
 
-        # Создаем и запускаем потоки
-        # 1 поток для LZT Monitor
-        thread = threading.Thread(target=self._lzt_monitoring_worker, name="LZT Monitor", daemon=True)
-        thread.start()
-        self.threads.append(thread)
-        logger.info(f"▶️ Поток запущен: LZT Monitor")
-        
+        # Создаем и запускаем потоки конвейера. Аккаунты поступают не из монитора,
+        # а из задачи покупки (запускается отдельно из панели).
+
         # Несколько потоков для Validator #1
         validator_threads = self.config.get('validator', {}).get('max_workers', 5)
         for i in range(validator_threads):
@@ -1275,6 +1223,12 @@ class TokenPipeline:
 
         with self._intake_lock:
             self.running = False
+
+        # Останавливаем задачу покупки (уже купленное завершит обработку по мере выхода)
+        try:
+            self.purchase.stop()
+        except Exception:
+            logger.warning("Не удалось остановить задачу покупки")
 
         # Останавливаем Telegram polling
         self.telegram.stop_polling()

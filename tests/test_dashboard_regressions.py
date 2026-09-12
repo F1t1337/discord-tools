@@ -43,7 +43,6 @@ class ReviewChecks(unittest.TestCase):
         self.pipe.running = True
         self.pipe._intake_lock = threading.Lock()
         self.pipe._export_lock = threading.Lock()
-        self.pipe.lzt_enabled = False
         self.pipe.close_channels = True
         self.pipe.new_tokens_queue = Queue()
         self.pipe.validator = SimpleNamespace(validate_token=Mock(return_value=(True, 'synthetic')))
@@ -111,10 +110,14 @@ class ReviewChecks(unittest.TestCase):
         self.pipe.telegram.send_tokens_file.assert_called_once_with(['synthetic-record-A'])
 
     def test_toggle_persists_in_normal_writable_configuration(self):
-        response = self.client.post('/api/settings/toggle', json={'key': 'lzt_enabled', 'value': True}, headers=self.headers)
+        response = self.client.post('/api/settings/toggle', json={'key': 'close_channels', 'value': False}, headers=self.headers)
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(self.pipe.lzt_enabled)
-        self.assertTrue(json.loads(Path(self.pipe.config_path).read_text())['lzt']['enabled'])
+        self.assertFalse(self.pipe.close_channels)
+        self.assertFalse(json.loads(Path(self.pipe.config_path).read_text())['cleaner']['close_channels'])
+
+    def test_removed_lzt_toggle_is_rejected(self):
+        response = self.client.post('/api/settings/toggle', json={'key': 'lzt_enabled', 'value': True}, headers=self.headers)
+        self.assertEqual(response.status_code, 400)
 
     def test_telegram_failure_is_explicit(self):
         self.ready('synthetic-record-A')
@@ -224,11 +227,93 @@ class ReviewChecks(unittest.TestCase):
 
     def test_failed_setting_write_does_not_change_live_value(self):
         with patch('modules.configuration.os.replace', side_effect=PermissionError):
-            response = self.client.post('/api/settings/toggle', json={'key': 'lzt_enabled', 'value': True}, headers=self.headers)
+            response = self.client.post('/api/settings/toggle', json={'key': 'close_channels', 'value': False}, headers=self.headers)
         self.assertEqual(response.status_code, 500)
-        self.assertFalse(self.pipe.lzt_enabled)
-        self.assertFalse(self.config['lzt']['enabled'])
-        self.assertFalse(json.loads(Path(self.pipe.config_path).read_text())['lzt']['enabled'])
+        self.assertTrue(self.pipe.close_channels)
+        self.assertTrue(json.loads(Path(self.pipe.config_path).read_text())['cleaner']['close_channels'])
+
+    def test_purchase_estimate_math(self):
+        from modules.purchase_task import PurchaseTaskManager
+        items = [{'item_id': i, 'price': p} for i, p in enumerate([10, 20, 30, 40], 1)]
+        lzt = SimpleNamespace(get_balance=Mock(return_value=55),
+                              search_accounts=Mock(side_effect=[(items, 4), ([], 4)]))
+        mgr = PurchaseTaskManager(lzt, self.pipe.db, Mock())
+        result = mgr.estimate(80, 60)
+        self.assertEqual(result['count'], 4)
+        self.assertEqual(result['total_cost'], 100)
+        self.assertEqual(result['balance'], 55)
+        self.assertEqual(result['max_affordable'], 2)  # 10+20<=55, +30>55
+
+    def test_purchase_task_buys_and_skips_dead(self):
+        from modules.purchase_task import PurchaseTaskManager
+        from modules.lzt_monitor import PurchaseError
+        items = [{'item_id': i, 'price': 10} for i in range(1, 6)]
+        lzt = SimpleNamespace(get_balance=Mock(return_value=1000),
+                              search_accounts=Mock(side_effect=[(items, 5), ([], 5)]))
+        def fake_buy(item_id, price):
+            if item_id % 2 == 0:
+                raise PurchaseError('dead account')
+            return f'tok{item_id}', {'seller': {'username': 'seller'}}
+        lzt.fast_buy = Mock(side_effect=fake_buy)
+        intake = Mock()
+        mgr = PurchaseTaskManager(lzt, self.pipe.db, intake)
+        mgr.BUY_DELAY = 0
+        mgr.start(80, 60, 3, 5)
+        mgr._thread.join(timeout=5)
+        snap = mgr.snapshot()
+        self.assertEqual(snap['status'], 'done')
+        self.assertEqual(snap['bought'], 3)        # item_ids 1,3,5
+        self.assertEqual(snap['skipped_dead'], 2)  # item_ids 2,4
+        self.assertEqual(intake.call_count, 3)
+
+    def test_purchase_task_stops_when_out_of_balance(self):
+        from modules.purchase_task import PurchaseTaskManager
+        from modules.lzt_monitor import PurchaseError
+        items = [{'item_id': i, 'price': 10} for i in range(1, 6)]
+        lzt = SimpleNamespace(get_balance=Mock(return_value=1000),
+                              search_accounts=Mock(side_effect=[(items, 5), ([], 5)]))
+        def fake_buy(item_id, price):
+            if item_id == 2:
+                raise PurchaseError('Not enough balance', out_of_balance=True)
+            return f'tok{item_id}', {}
+        lzt.fast_buy = Mock(side_effect=fake_buy)
+        mgr = PurchaseTaskManager(lzt, self.pipe.db, Mock())
+        mgr.BUY_DELAY = 0
+        mgr.start(80, 60, 5, 5)
+        mgr._thread.join(timeout=5)
+        snap = mgr.snapshot()
+        self.assertEqual(snap['bought'], 1)  # bought #1, then #2 hit balance and stopped
+
+    def test_purchase_endpoints_require_auth_and_csrf(self):
+        anonymous = api.app.test_client()
+        self.assertEqual(anonymous.get('/api/purchase/status').status_code, 401)
+        self.assertEqual(anonymous.get('/api/purchase/estimate?pmax=80&chat_min=60').status_code, 401)
+        for route in ('/api/purchase/start', '/api/purchase/stop'):
+            self.assertEqual(anonymous.post(route, json={}).status_code, 401)
+            self.assertEqual(self.client.post(route, json={}).status_code, 403)
+
+    def test_purchase_estimate_endpoint(self):
+        self.pipe.estimate_purchase = Mock(return_value={
+            'count': 4, 'total_cost': 100, 'balance': 55, 'max_affordable': 2,
+            'collected': 4, 'truncated': False})
+        response = self.client.get('/api/purchase/estimate?pmax=80&chat_min=60', headers=self.headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json['max_affordable'], 2)
+        self.assertEqual(self.client.get('/api/purchase/estimate?pmax=abc&chat_min=60',
+                                         headers=self.headers).status_code, 400)
+
+    def test_purchase_start_rejects_over_balance(self):
+        self.pipe.estimate_purchase = Mock(return_value={'max_affordable': 2})
+        self.pipe.purchase = SimpleNamespace(is_active=lambda: False)
+        self.pipe.start_purchase = Mock(return_value={'status': 'running'})
+        over = self.client.post('/api/purchase/start',
+            json={'pmax': 80, 'chat_min': 60, 'count': 5, 'cleaner_workers': 10}, headers=self.headers)
+        self.assertEqual(over.status_code, 409)
+        self.pipe.start_purchase.assert_not_called()
+        ok = self.client.post('/api/purchase/start',
+            json={'pmax': 80, 'chat_min': 60, 'count': 2, 'cleaner_workers': 10}, headers=self.headers)
+        self.assertEqual(ok.status_code, 202)
+        self.pipe.start_purchase.assert_called_once_with(80.0, 60, 2, 10)
 
     def test_atomic_export_only_claims_each_record_once(self):
         self.ready('synthetic-record-A')
