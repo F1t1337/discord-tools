@@ -39,6 +39,7 @@
       <nav aria-label="Основная навигация">
         <a href="#overview" data-view="overview"><span aria-hidden="true">◫</span>Обзор</a>
         <a href="#accounts" data-view="accounts"><span aria-hidden="true">▤</span>Аккаунты</a>
+        <a href="#tokens" data-view="tokens"><span aria-hidden="true">⇩</span>Токены</a>
         <a href="#proxies" data-view="proxies"><span aria-hidden="true">⇄</span>Прокси</a>
         <a href="#logs" data-view="logs"><span aria-hidden="true">≡</span>Журнал событий</a>
         <a href="#settings" data-view="settings"><span aria-hidden="true">⚙</span>Настройки</a>
@@ -98,13 +99,33 @@
         <div class="panel table-panel"><div class="table-overflow"><table><thead><tr><th>Прокси</th><th>Авторизация</th><th>Состояние</th><th>Пинг</th><th>Проверен</th></tr></thead><tbody id="proxies-body"></tbody></table></div></div>
       </section>
 
+      <section id="view-tokens" class="view" aria-label="Токены" hidden>
+        <div class="settings-grid">
+          <article class="panel">
+            <div class="panel-heading"><div><p class="section-label">ЗАГРУЗКА</p><h2>Добавить токены</h2></div></div>
+            <p class="muted">Вставьте токены — по одному в строке. Поддерживается формат <code>login:pass:token</code> (берётся последний сегмент). Токены уходят в очередь обработки.</p>
+            <textarea id="token-input" class="proxy-input" rows="8" placeholder="MTk...token&#10;login:pass:MTk...token" maxlength="1000000"></textarea>
+            <div class="panel-action"><button id="token-upload" class="button primary">Загрузить в обработку</button><p class="muted">Дубликаты не проверяются — всё уходит в очередь валидации.</p></div>
+          </article>
+          <article class="panel">
+            <div class="panel-heading"><div><p class="section-label">ВЫГРУЗКА</p><h2>Готовые токены</h2></div></div>
+            <p class="muted">Проверяет готовые токены: валидные помечаются «отправлены» и уходят файлом в Telegram. Здесь же можно скачать .txt.</p>
+            <div id="export-job" class="alert" role="status" hidden></div>
+            <div class="panel-action proxy-actions">
+              <button id="token-export" class="button primary">Выгрузить готовые токены</button>
+              <button id="token-download" class="button secondary" disabled>Скачать .txt</button>
+            </div>
+          </article>
+        </div>
+      </section>
+
       <section id="view-logs" class="view" aria-label="Журнал событий" hidden>
         <div class="toolbar"><div><h2>Последние события</h2><p class="muted">Последние 100 записей выбранного уровня</p></div><select id="log-level" aria-label="Уровень журнала"><option value="">Все уровни</option><option value="INFO">Информация</option><option value="WARNING">Предупреждения</option><option value="ERROR">Ошибки</option><option value="CRITICAL">Критические</option><option value="DEBUG">Отладка</option></select></div>
         <div class="panel log-panel" id="log-entries"></div>
       </section>
 
       <section id="view-settings" class="view" aria-label="Настройки" hidden>
-        <div class="settings-grid"><article class="panel"><div class="panel-heading"><div><p class="section-label">БЕЗОПАСНОСТЬ</p><h2>Доступ к панели</h2></div></div><dl id="security-settings" class="detail-list"></dl><div class="panel-action"><button id="revoke-sessions" class="button danger">Завершить все сессии</button><p class="muted">Включая текущую. После этого потребуется войти снова.</p></div></article><article class="panel"><div class="panel-heading"><div><p class="section-label">КОНФИГУРАЦИЯ</p><h2>Настройки сервера</h2></div></div><dl id="server-settings" class="detail-list"></dl><p class="settings-hint">Пароль и список владельцев задаются на сервере. После изменения перезапустите сервис.</p></article><article class="panel"><div class="panel-heading"><div><p class="section-label">ОБРАБОТКА</p><h2>Потоки очистки</h2></div></div><p class="muted">Сколько токенов очищается одновременно. Каждому потоку выдаётся отдельный прокси из пула.</p><div class="worker-control"><label class="sr-only" for="cleaner-workers">Число потоков очистки</label><input id="cleaner-workers" type="number" min="1" max="200" step="1" inputmode="numeric"><button id="cleaner-workers-apply" class="button primary">Применить</button></div><p class="muted" id="cleaner-workers-note"></p></article></div>
+        <div class="settings-grid"><article class="panel"><div class="panel-heading"><div><p class="section-label">БЕЗОПАСНОСТЬ</p><h2>Доступ к панели</h2></div></div><dl id="security-settings" class="detail-list"></dl><div class="panel-action"><button id="revoke-sessions" class="button danger">Завершить все сессии</button><p class="muted">Включая текущую. После этого потребуется войти снова.</p></div></article><article class="panel"><div class="panel-heading"><div><p class="section-label">КОНФИГУРАЦИЯ</p><h2>Настройки сервера</h2></div></div><dl id="server-settings" class="detail-list"></dl><p class="settings-hint">Пароль и список владельцев задаются на сервере. После изменения перезапустите сервис.</p></article><article class="panel"><div class="panel-heading"><div><p class="section-label">ОБРАБОТКА</p><h2>Потоки очистки</h2></div></div><p class="muted">Сколько токенов очищается одновременно. Каждому потоку выдаётся отдельный прокси из пула.</p><div class="worker-control"><label class="sr-only" for="cleaner-workers">Число потоков очистки</label><input id="cleaner-workers" type="number" min="1" max="200" step="1" inputmode="numeric"><button id="cleaner-workers-apply" class="button primary">Применить</button></div><p class="muted" id="cleaner-workers-note"></p></article><article class="panel"><div class="panel-heading"><div><p class="section-label">УПРАВЛЕНИЕ</p><h2>Переключатели и баланс</h2></div></div><div class="toggle-row"><div><strong>Получение с LZT</strong><small>Автозабор аккаунтов с lolz</small></div><label class="switch"><input type="checkbox" id="toggle-lzt"><span class="slider" aria-hidden="true"></span></label></div><div class="toggle-row"><div><strong>Закрытие чатов при очистке</strong><small>Закрывать чаты со спам-ссылками</small></div><label class="switch"><input type="checkbox" id="toggle-close"><span class="slider" aria-hidden="true"></span></label></div><dl id="balance-summary" class="detail-list"></dl></article></div>
       </section>
       <footer class="page-footer"><span>DISCORD TOOLS</span><span id="last-updated">Данные ещё не загружены</span></footer>
     </main>

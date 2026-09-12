@@ -45,6 +45,13 @@ proxy_job_lock = threading.Lock()
 proxy_job = {'running': False, 'kind': None, 'total': 0, 'done': 0, 'alive': 0,
              'dead': 0, 'started_at': None, 'finished_at': None, 'error': None}
 
+# Фоновая выгрузка готовых токенов: одно задание за раз. Валидные токены хранятся
+# в памяти для скачивания из панели и параллельно уходят файлом в Telegram.
+export_job_lock = threading.Lock()
+export_job = {'running': False, 'total': 0, 'done': 0, 'valid': 0, 'invalid': 0,
+              'started_at': None, 'finished_at': None, 'error': None, 'available': False}
+export_tokens_buffer = []
+
 
 def init_dashboard(pipeline_instance, config_dict):
     global pipeline, config, db, settings, started_at, stop_requested
@@ -69,6 +76,10 @@ def init_dashboard(pipeline_instance, config_dict):
     with proxy_job_lock:
         proxy_job.update(running=False, kind=None, total=0, done=0, alive=0,
                          dead=0, started_at=None, finished_at=None, error=None)
+    with export_job_lock:
+        export_job.update(running=False, total=0, done=0, valid=0, invalid=0,
+                          started_at=None, finished_at=None, error=None, available=False)
+        export_tokens_buffer.clear()
     logger.info('Защищённая панель инициализирована')
 
 
@@ -391,8 +402,10 @@ def get_settings():
         database_file=Path(db.db_path).name,
         worker_connected=pipeline is not None,
         monitoring_only=pipeline is None,
-        lzt_enabled=bool(config.get('lzt', {}).get('enabled')),
-        close_channels=bool(config.get('cleaner', {}).get('close_channels')),
+        lzt_enabled=bool(getattr(pipeline, 'lzt_enabled', config.get('lzt', {}).get('enabled'))
+                         if pipeline is not None else config.get('lzt', {}).get('enabled')),
+        close_channels=bool(getattr(pipeline, 'close_channels', config.get('cleaner', {}).get('close_channels'))
+                            if pipeline is not None else config.get('cleaner', {}).get('close_channels')),
         validator_workers=config.get('validator', {}).get('max_workers', 0),
         cleaner_workers=(pipeline.count_cleaner_workers() if pipeline is not None
                          and hasattr(pipeline, 'count_cleaner_workers')
@@ -590,6 +603,107 @@ def persist_config_value(section, key, value):
             json.dump(raw, handle, ensure_ascii=False, indent=2)
     except Exception:
         logger.warning('Не удалось сохранить настройку %s.%s', section, key)
+
+
+# ==================== ТОКЕНЫ, БАЛАНС, ПЕРЕКЛЮЧАТЕЛИ ====================
+
+@app.get('/api/lzt/balance')
+def lzt_balance():
+    if pipeline is None or not hasattr(pipeline, 'get_lzt_balance'):
+        return jsonify(balance=None, min_balance=config.get('lzt', {}).get('min_balance_alert', 0),
+                       enabled=bool(config.get('lzt', {}).get('enabled')), available=False)
+    balance = pipeline.get_lzt_balance()
+    return jsonify(balance=balance,
+                   min_balance=config.get('lzt', {}).get('min_balance_alert', 0),
+                   enabled=bool(config.get('lzt', {}).get('enabled')), available=True)
+
+
+@app.post('/api/settings/toggle')
+def toggle_setting():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return error('Нужен JSON-объект')
+    key, value = data.get('key'), data.get('value')
+    if key not in {'close_channels', 'lzt_enabled'} or not isinstance(value, bool):
+        return error('Неверные параметры переключателя')
+    if pipeline is not None:
+        applied = (pipeline.set_close_channels(value) if key == 'close_channels'
+                   else pipeline.set_lzt_enabled(value))
+        return jsonify(success=True, key=key, value=applied, live=True)
+    # Режим мониторинга: только сохраняем в config.json.
+    section, name = ('cleaner', 'close_channels') if key == 'close_channels' else ('lzt', 'enabled')
+    persist_config_value(section, name, value)
+    return jsonify(success=True, key=key, value=value, live=False)
+
+
+@app.post('/api/tokens/upload')
+def upload_tokens():
+    if pipeline is None or not hasattr(pipeline, 'add_manual_tokens'):
+        return error('Загрузка токенов доступна только при запущенной обработке', 503)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return error('Нужен JSON-объект')
+    raw = data.get('tokens')
+    if not isinstance(raw, str) or not raw.strip():
+        return error('Вставьте токены')
+    if len(raw) > MAX_BODY_BYTES:
+        return error('Слишком большой список токенов')
+    result = pipeline.add_manual_tokens(raw)
+    return jsonify(success=True, added=result['added'], total=result['total'])
+
+
+@app.post('/api/tokens/export')
+def export_tokens():
+    if pipeline is None or not hasattr(pipeline, 'export_ready_tokens'):
+        return error('Выгрузка доступна только при запущенной обработке', 503)
+    with export_job_lock:
+        if export_job['running']:
+            return error('Выгрузка уже выполняется, дождитесь завершения', 409)
+        export_job.update(running=True, total=0, done=0, valid=0, invalid=0,
+                          started_at=time.time(), finished_at=None, error=None, available=False)
+        export_tokens_buffer.clear()
+
+    def worker():
+        def progress(done, total, valid, invalid):
+            with export_job_lock:
+                export_job.update(done=done, total=total, valid=valid, invalid=invalid)
+        try:
+            result = pipeline.export_ready_tokens(progress_cb=progress)
+            with export_job_lock:
+                export_tokens_buffer.clear()
+                export_tokens_buffer.extend(result['valid_tokens'])
+                export_job.update(total=result['total'], valid=len(result['valid_tokens']),
+                                  invalid=result['invalid'], available=bool(result['valid_tokens']))
+        except Exception as exc:
+            with export_job_lock:
+                export_job['error'] = type(exc).__name__
+            logger.error('Ошибка выгрузки токенов: %s', type(exc).__name__)
+        finally:
+            with export_job_lock:
+                export_job['running'] = False
+                export_job['finished_at'] = time.time()
+
+    threading.Thread(target=worker, name='TokenExport', daemon=True).start()
+    return jsonify(success=True), 202
+
+
+@app.get('/api/tokens/export/status')
+def export_status():
+    with export_job_lock:
+        return jsonify(dict(export_job))
+
+
+@app.get('/api/tokens/export/download')
+def export_download():
+    with export_job_lock:
+        if export_job['running']:
+            return error('Выгрузка ещё выполняется', 409)
+        tokens = list(export_tokens_buffer)
+    if not tokens:
+        return error('Нет готовых токенов для скачивания', 404)
+    body = '\n'.join(tokens) + '\n'
+    return Response(body, mimetype='text/plain; charset=utf-8',
+                    headers={'Content-Disposition': 'attachment; filename=tokens.txt'})
 
 
 @app.post('/api/control/stop')

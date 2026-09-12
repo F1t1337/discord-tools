@@ -649,6 +649,106 @@ class TokenPipeline:
         except Exception as e:
             logger.error(f"❌ Не удалось сохранить настройку {section}.{key}: {e}")
 
+    # ==================== ИНТЕРФЕЙС ДЛЯ ВЕБ-ПАНЕЛИ ====================
+
+    def set_close_channels(self, value: bool) -> bool:
+        """Включает/выключает закрытие чатов при очистке и сохраняет настройку."""
+        self.close_channels = bool(value)
+        self._persist_config_value('cleaner', 'close_channels', self.close_channels)
+        logger.info(f"⚙️ Закрытие чатов при очистке: {'включено' if self.close_channels else 'выключено'}")
+        return self.close_channels
+
+    def set_lzt_enabled(self, value: bool) -> bool:
+        """Включает/выключает получение аккаунтов с lolz/LZT и сохраняет настройку."""
+        self.lzt_enabled = bool(value)
+        self._persist_config_value('lzt', 'enabled', self.lzt_enabled)
+        logger.info(f"⚙️ Получение аккаунтов с lolz: {'включено' if self.lzt_enabled else 'выключено'}")
+        return self.lzt_enabled
+
+    def get_lzt_balance(self):
+        """Возвращает текущий баланс LZT или None при ошибке."""
+        try:
+            return self.lzt_monitor.get_balance()
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения баланса LZT: {e}")
+            return None
+
+    @staticmethod
+    def _parse_manual_tokens(raw_text: str):
+        """Разбирает вставленный текст в список токенов (поддержка login:pass:token)."""
+        tokens = []
+        for line in (raw_text or '').splitlines():
+            item = line.strip()
+            if not item or item.startswith('#'):
+                continue
+            # Формат "login:pass:token" — берём последний сегмент
+            if ':' in item and not item.startswith('mfa.'):
+                parts = [p.strip() for p in item.split(':') if p.strip()]
+                if parts:
+                    item = parts[-1]
+            tokens.append(item)
+        return tokens
+
+    def add_manual_tokens(self, raw_text: str) -> dict:
+        """Добавляет вручную вставленные токены в БД и очередь валидации."""
+        tokens = self._parse_manual_tokens(raw_text)
+        added = 0
+        for token in tokens:
+            try:
+                # При дубликате всё равно кладём в очередь — уникальность не проверяем.
+                try:
+                    self.db.add_token(token=token, seller_username='manual_upload', price=0)
+                except Exception as db_err:
+                    logger.debug(f"add_token: {db_err}")
+                self.new_tokens_queue.put({
+                    'token': token, 'item_id': None, 'username': 'Manual',
+                    'seller_username': 'manual_upload', 'price': 0,
+                })
+                added += 1
+            except Exception as e:
+                logger.error(f"❌ Ошибка добавления токена: {e}")
+        logger.info(f"📥 Ручная загрузка из панели: всего {len(tokens)}, принято {added}")
+        return {'added': added, 'total': len(tokens)}
+
+    def export_ready_tokens(self, progress_cb=None) -> dict:
+        """
+        Прогоняет готовые токены через валидатор: валидные → 'sent', невалидные →
+        'invalid'. Валидные отправляются файлом в Telegram и возвращаются вызывающему
+        (панель предлагает их скачать). progress_cb(done, total, valid, invalid).
+        """
+        ready_tokens = self.db.get_ready_tokens(limit=1000)
+        total = len(ready_tokens)
+        valid_tokens, invalid_count = [], 0
+        for i, token_data in enumerate(ready_tokens, 1):
+            token = token_data['token']
+            try:
+                is_valid, _ = self.validator.validate_token(token)
+            except Exception as e:
+                logger.warning(f"⚠️ [Export] Ошибка валидации токена: {e}")
+                is_valid = False
+            if is_valid:
+                valid_tokens.append(token)
+                self.db.update_token_status(token=token, status='sent')
+            else:
+                invalid_count += 1
+                self.db.update_token_status(token=token, status='invalid',
+                                            error='Failed validation on export')
+            if progress_cb:
+                try:
+                    progress_cb(i, total, len(valid_tokens), invalid_count)
+                except Exception:
+                    pass
+            time.sleep(0.3)
+        self.ready_tokens_notification_sent = False
+        logger.info(f"📤 [Export] Завершено: валидных={len(valid_tokens)}, невалидных={invalid_count}")
+        # Доставка готовых токенов остаётся за Telegram.
+        if valid_tokens:
+            try:
+                self.telegram.send_tokens_file(valid_tokens)
+            except Exception as e:
+                logger.error(f"❌ Не удалось отправить файл токенов в Telegram: {e}")
+        return {'total': total, 'valid_tokens': valid_tokens, 'invalid': invalid_count}
+
     def _handle_dashboard_url_command(self, chat_id: str = None, message_id: int = None):
         """Обработчик команды получения Dashboard URL"""
         try:
@@ -1051,36 +1151,15 @@ class TokenPipeline:
         self.running = True
         
         logger.info("🚀 Запуск Pipeline...")
-        
-        # Получаем Cloudflare URL для Mini App
-        tunnel_url = self.cloudflare.get_public_url()
-        miniapp_url = f"{tunnel_url}/miniapp" if tunnel_url else None
-        
-        if miniapp_url:
-            logger.info(f"🚀 Mini App доступен: {miniapp_url}")
-        else:
-            logger.info("⚠️ Cloudflare Tunnel не запущен, Mini App будет недоступен")
-        
-        # Отправляем главное меню в Telegram
-        self.telegram.send_main_menu(miniapp_url=miniapp_url)
-        
-        # Отправляем уведомление
-        notification_text = "Автоматическая обработка токенов начата.\n\nИспользуйте кнопки для управления системой."
-        
-        if miniapp_url:
-            notification_text += "\n\n🚀 Mini App доступен - нажмите кнопку 'Открыть Dashboard' для быстрого доступа!"
-        else:
-            notification_text += "\n\n💡 Запустите Cloudflare Tunnel для удаленного доступа к Dashboard"
-        
+
+        # Управление вынесено в веб-панель. Telegram оставлен только для
+        # уведомлений и отправки готовых токенов: меню и polling не запускаем.
         self.telegram.send_notification(
             title="Pipeline запущен",
-            message=notification_text,
+            message="Автоматическая обработка токенов начата.\n\nУправление — в веб-панели.",
             level="SUCCESS"
         )
-        
-        # Запускаем Telegram polling
-        self.telegram.start_polling()
-        
+
         # Создаем и запускаем потоки
         # 1 поток для LZT Monitor
         thread = threading.Thread(target=self._lzt_monitoring_worker, name="LZT Monitor", daemon=True)

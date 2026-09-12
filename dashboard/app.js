@@ -3,6 +3,7 @@ const $ = id => document.getElementById(id);
 const titles = {
   overview: ['Обзор', 'Текущее состояние системы и последние изменения.'],
   accounts: ['Аккаунты', 'Поиск и просмотр записей без раскрытия токенов доступа.'],
+  tokens: ['Токены', 'Загрузка токенов в обработку и выгрузка готовых.'],
   proxies: ['Прокси', 'Загрузка, проверка на живость и пул рабочих прокси.'],
   logs: ['Журнал событий', 'События приложения и диагностика сервера.'],
   settings: ['Настройки', 'Параметры доступа и текущая конфигурация сервера.'],
@@ -128,14 +129,16 @@ async function loadView() {
     } else if (view === 'accounts') {
       result = await api('/accounts?' + new URLSearchParams({limit:pageSize, offset:accountOffset, status:$('account-status').value, search:$('account-search').value.trim()}), opts);
     } else if (view === 'proxies') result = await api('/proxies', opts);
+    else if (view === 'tokens') result = await api('/tokens/export/status', opts);
     else if (view === 'logs') result = await api('/logs?limit=100&level=' + $('log-level').value, opts);
-    else result = await api('/settings', opts);
+    else result = await Promise.all([api('/settings', opts), api('/lzt/balance', opts)]);
     if (generation !== requestGeneration || !loggedIn) return;
     if (view === 'overview') renderOverview(...result);
     else if (view === 'accounts') renderAccounts(result);
     else if (view === 'proxies') renderProxies(result);
+    else if (view === 'tokens') renderTokens(result);
     else if (view === 'logs') renderLogs(result);
-    else renderSettings(result);
+    else renderSettings(...result);
     connection(true);
     $('last-updated').textContent = 'Последнее обновление: ' + new Date().toLocaleTimeString('ru-RU');
   } catch (error) {
@@ -271,6 +274,27 @@ async function proxyAction(action) {
   try { await action(); await loadView(); }
   catch (error) { toast(error.message); }
 }
+let exportBusy = false;
+function renderTokens(job) {
+  job = job || {};
+  exportBusy = !!job.running;
+  const banner = $('export-job');
+  if (job.running) {
+    banner.hidden = false; banner.className = 'alert';
+    banner.textContent = 'Выгрузка: проверено ' + number(job.done) + ' из ' + number(job.total) +
+      ' · валидных ' + number(job.valid) + ', невалидных ' + number(job.invalid);
+  } else if (job.error) {
+    banner.hidden = false; banner.className = 'alert error';
+    banner.textContent = 'Выгрузка прервана из-за ошибки. Попробуйте ещё раз.';
+  } else if (job.finished_at) {
+    banner.hidden = false; banner.className = 'alert warning';
+    banner.textContent = 'Готово: валидных ' + number(job.valid) + ', невалидных ' + number(job.invalid) +
+      (job.valid ? '. Файл отправлен в Telegram, можно скачать .txt.' : '. Валидных токенов нет.');
+  } else banner.hidden = true;
+  $('token-export').disabled = exportBusy;
+  $('token-upload').disabled = exportBusy;
+  $('token-download').disabled = exportBusy || !job.available;
+}
 function renderLogs(result) {
   if (!result.items.length) return empty('log-entries',result.available?'Событий не найдено':'Журнал ещё не создан',result.available?'Выберите другой уровень или дождитесь новых событий.':'Записи появятся после первого события приложения.');
   $('log-entries').replaceChildren(...result.items.map(item=>{
@@ -278,14 +302,21 @@ function renderLogs(result) {
     meta.append(element('time',item.time),element('span',item.level,'status-pill '+(['ERROR','CRITICAL'].includes(item.level)?'bad':item.level==='WARNING'?'warn':'accent')),element('span',item.module)); row.append(meta,element('p',item.message)); return row;
   }));
 }
-function renderSettings(result) {
+function renderSettings(result, balance) {
   details('security-settings',[['Администратор',result.username],['Адрес панели',result.public_url],['HTTPS',result.https?'Включён':'Локальный HTTP'],['Срок сессии',result.session_hours+' ч'],['Telegram-владельцы',result.telegram_owners.join(', ')||'Не настроены']]);
-  details('server-settings',[['Режим',result.monitoring_only?'Мониторинг БД':'Подключён к приложению'],['База данных',result.database_file],['Версия схемы',result.schema_version],['Получение с LZT',result.lzt_enabled?'Включено в конфиге':'Выключено'],['Закрытие чатов',result.close_channels?'Включено в конфиге':'Выключено'],['Потоки проверки',result.validator_workers],['Потоки очистки',result.cleaner_workers]]);
+  details('server-settings',[['Режим',result.monitoring_only?'Мониторинг БД':'Подключён к приложению'],['База данных',result.database_file],['Версия схемы',result.schema_version],['Потоки проверки',result.validator_workers],['Потоки очистки',result.cleaner_workers]]);
   const input = $('cleaner-workers');
   if (document.activeElement !== input) input.value = result.cleaner_workers;
   $('cleaner-workers-note').textContent = result.monitoring_only
     ? 'Рабочий процесс не подключён — изменение сохранится в конфиге и применится при следующем запуске.'
     : 'Применяется на лету: потоки добавляются или завершаются после текущего токена.';
+  const lzt = $('toggle-lzt'), close = $('toggle-close');
+  if (document.activeElement !== lzt) lzt.checked = !!result.lzt_enabled;
+  if (document.activeElement !== close) close.checked = !!result.close_channels;
+  lzt.disabled = close.disabled = result.monitoring_only;
+  balance = balance || {};
+  const bal = balance.balance == null ? (balance.available ? '—' : 'Нет данных процесса') : money(balance.balance);
+  details('balance-summary',[['Баланс LZT',bal],['Порог оповещения',money(balance.min_balance||0)]]);
 }
 function confirmAction(title,text) {
   $('confirm-title').textContent=title; $('confirm-text').textContent=text;
@@ -352,6 +383,36 @@ $('cleaner-workers-apply').addEventListener('click',async()=>{
   try { const result=await api('/settings/cleaner-workers',{method:'POST',body:JSON.stringify({workers:value})}); toast(result.live?('Потоков очистки: '+result.workers):('Сохранено в конфиг: '+result.workers)); await loadView(); }
   catch(error){toast(error.message);}
   finally{$('cleaner-workers-apply').disabled=false;}
+});
+async function toggleSetting(key, checkbox){
+  const value=checkbox.checked;
+  checkbox.disabled=true;
+  try { const result=await api('/settings/toggle',{method:'POST',body:JSON.stringify({key,value})}); checkbox.checked=result.value; toast((result.live?'Применено':'Сохранено в конфиг')+': '+(result.value?'вкл':'выкл')); }
+  catch(error){checkbox.checked=!value; toast(error.message);}
+  finally{checkbox.disabled=false;}
+}
+$('toggle-lzt').addEventListener('change',()=>toggleSetting('lzt_enabled',$('toggle-lzt')));
+$('toggle-close').addEventListener('change',()=>toggleSetting('close_channels',$('toggle-close')));
+$('token-upload').addEventListener('click',async()=>{
+  const raw=$('token-input').value.trim();
+  if (!raw) return toast('Вставьте токены');
+  $('token-upload').disabled=true;
+  try { const result=await api('/tokens/upload',{method:'POST',body:JSON.stringify({tokens:raw})}); toast('Загружено в обработку: '+result.added+' из '+result.total); $('token-input').value=''; }
+  catch(error){toast(error.message);}
+  finally{$('token-upload').disabled=false;}
+});
+$('token-export').addEventListener('click',async()=>{
+  if (exportBusy) return;
+  if (!await confirmAction('Выгрузить готовые токены?','Готовые токены пройдут проверку, валидные будут помечены «отправлены» и уйдут файлом в Telegram.')) return;
+  try { await api('/tokens/export',{method:'POST',body:'{}'}); toast('Выгрузка запущена'); await loadView(); }
+  catch(error){toast(error.message);}
+});
+$('token-download').addEventListener('click',async()=>{
+  const button=$('token-download'); button.disabled=true;
+  try {
+    const blob=await api('/tokens/export/download',{blob:true});
+    const url=URL.createObjectURL(blob), link=element('a'); link.href=url; link.download='tokens.txt'; document.body.append(link); link.click(); link.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000); toast('Файл готов');
+  } catch(error){toast(error.message);} finally{button.disabled=false;}
 });
 $('account-search').addEventListener('input',()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{accountOffset=0;loadView();},350);});
 $('account-status').addEventListener('change',()=>{accountOffset=0;loadView();});
