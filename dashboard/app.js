@@ -18,8 +18,47 @@ const labels = {
 };
 let csrf = '', loggedIn = false, view = 'overview', requestGeneration = 0, viewController;
 let accountOffset = 0, accountTotal = 0;
-let pollTimer, toastTimer, searchTimer;
+let toastTimer, searchTimer;
+let evtSource = null, liveDebounce = null, fallbackTimer = null, streamRetry = 0;
+let animatedView = null, enterAnim = false;
 const pageSize = 25;
+const SVGNS = 'http://www.w3.org/2000/svg';
+const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function icon(name, className) {
+  const svg = document.createElementNS(SVGNS, 'svg');
+  if (className) svg.setAttribute('class', className);
+  svg.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS(SVGNS, 'use');
+  use.setAttribute('href', '#i-' + name);
+  svg.append(use);
+  return svg;
+}
+function countUp(el, to) {
+  to = Number(to) || 0;
+  if (prefersReduced || to === 0) { el.textContent = number(to); return; }
+  const dur = 650, start = performance.now();
+  (function frame(now) {
+    const p = Math.min(1, (now - start) / dur), eased = 1 - Math.pow(1 - p, 3);
+    el.textContent = number(Math.round(to * eased));
+    if (p < 1) requestAnimationFrame(frame);
+  })(start);
+}
+function runEnter(host) {
+  if (!host || prefersReduced) return;
+  host.querySelectorAll('.metric, .panel, .system-strip, .table-panel, .log-row').forEach((el, i) => {
+    el.style.setProperty('--d', Math.min(i * 0.05, 0.4) + 's');
+    el.classList.remove('rise'); void el.offsetWidth; el.classList.add('rise');
+  });
+  host.querySelectorAll('.metric-value[data-to]').forEach(el => countUp(el, el.dataset.to));
+}
+function metricCard([title, value, note, iconName]) {
+  const card = element('article', null, 'metric'), label = element('div', null, 'metric-label');
+  label.append(element('span', title), icon(iconName, 'metric-icon'));
+  const valueEl = element('p', number(value), 'metric-value');
+  valueEl.dataset.to = Number(value) || 0;
+  card.append(label, valueEl, element('p', note, 'metric-note'));
+  return card;
+}
 const number = value => new Intl.NumberFormat('ru-RU').format(Number(value) || 0);
 const money = value => new Intl.NumberFormat('ru-RU', {style: 'currency', currency: 'RUB', maximumFractionDigits: 2}).format(Number(value) || 0);
 function date(value) {
@@ -75,14 +114,14 @@ async function api(path, options = {}) {
   return options.blob ? response.blob() : response.json();
 }
 function showLogin(message = '') {
-  loggedIn = false; clearTimeout(pollTimer); viewController?.abort();
+  loggedIn = false; stopLive(); viewController?.abort(); animatedView = null;
   $('workspace').hidden = true; $('boot-screen').hidden = true; $('login-screen').hidden = false;
   $('login-error').textContent = message; $('password').value = ''; $('token-input').value = '';
   document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
 }
 function showWorkspace(username) {
   loggedIn = true; $('login-screen').hidden = true; $('boot-screen').hidden = true; $('workspace').hidden = false;
-  $('profile-name').textContent = username; navigate(); $('main').focus();
+  $('profile-name').textContent = username; animatedView = null; navigate(); $('main').focus(); startLive();
 }
 async function boot() {
   $('workspace').hidden = true; $('login-screen').hidden = true; $('boot-screen').hidden = false;
@@ -108,20 +147,45 @@ function navigate() {
   });
   if (loggedIn) loadView();
 }
-function connection(ok) {
+function connection(ok, live) {
   $('connection-light').className = 'server-light ' + (ok ? 'online' : 'offline');
-  $('connection-label').textContent = ok ? 'Сервер доступен' : 'Нет связи с сервером';
+  $('connection-label').textContent = ok ? (live ? 'Live-подключение' : 'Сервер доступен') : 'Нет связи с сервером';
   $('connection-time').textContent = ok ? 'Обновлено ' + new Date().toLocaleTimeString('ru-RU') : 'Проверьте подключение';
 }
-function schedule() {
-  clearTimeout(pollTimer);
-  if (loggedIn && $('auto-refresh').checked) pollTimer = setTimeout(() => {
-    if (document.hidden) schedule(); else loadView();
+// ---------- Живые обновления (SSE) с откатом к поллингу ----------
+function stopLive() {
+  if (evtSource) { evtSource.close(); evtSource = null; }
+  clearTimeout(fallbackTimer); clearTimeout(liveDebounce); fallbackTimer = null;
+}
+function pollFallback() {
+  clearTimeout(fallbackTimer);
+  if (!loggedIn || !$('auto-refresh').checked) return;
+  fallbackTimer = setTimeout(async () => {
+    if (!document.hidden) await loadView();
+    pollFallback();
   }, 5000);
+}
+function nudgeLive() {
+  clearTimeout(liveDebounce);
+  liveDebounce = setTimeout(() => { if (!document.hidden && loggedIn) loadView(); }, 180);
+}
+function startLive() {
+  stopLive();
+  if (!loggedIn || !$('auto-refresh').checked) return;
+  if (!window.EventSource) { connection(true); pollFallback(); return; }
+  const source = new EventSource('/api/stream');
+  evtSource = source;
+  source.onopen = () => { streamRetry = 0; connection(true, true); };
+  source.addEventListener('update', () => { streamRetry = 0; connection(true, true); nudgeLive(); });
+  source.onerror = () => {
+    if (evtSource !== source) return;
+    connection(false);
+    if (++streamRetry >= 4) { stopLive(); pollFallback(); }  // SSE недоступен — откат к поллингу
+  };
 }
 async function loadView() {
   if (!loggedIn) return;
-  clearTimeout(pollTimer); viewController?.abort(); viewController = new AbortController();
+  viewController?.abort(); viewController = new AbortController();
   const generation = ++requestGeneration, opts = {signal: viewController.signal};
   $('page-loading').hidden = false; $('page-error').hidden = true;
   try {
@@ -137,6 +201,7 @@ async function loadView() {
     else if (view === 'logs') result = await api('/logs?limit=100&level=' + $('log-level').value, opts);
     else result = await Promise.all([api('/settings', opts), api('/lzt/balance', opts)]);
     if (generation !== requestGeneration || !loggedIn) return;
+    enterAnim = view !== animatedView;
     if (view === 'overview') renderOverview(...result);
     else if (view === 'purchase') renderPurchase(result);
     else if (view === 'accounts') renderAccounts(result);
@@ -145,28 +210,26 @@ async function loadView() {
     else if (view === 'tokens') renderTokens(result);
     else if (view === 'logs') renderLogs(result);
     else renderSettings(...result);
-    connection(true);
+    connection(true, !!evtSource);
     $('last-updated').textContent = 'Последнее обновление: ' + new Date().toLocaleTimeString('ru-RU');
+    if (enterAnim) { animatedView = view; runEnter($('view-' + view)); }
   } catch (error) {
     if (error.name !== 'AbortError' && generation === requestGeneration && loggedIn) {
       connection(false); $('page-error').textContent = error.message + ' Показаны последние полученные данные.'; $('page-error').hidden = false;
     }
   } finally {
-    if (generation === requestGeneration) { $('page-loading').hidden = true; schedule(); }
+    if (generation === requestGeneration) $('page-loading').hidden = true;
   }
 }
 function renderOverview(state, today, series) {
   const counts = state.counts, total = Object.values(counts).reduce((sum, n) => sum + n, 0);
   const metrics = [
-    ['Всего аккаунтов', total, 'Записей в базе', '▤'],
-    ['Готовы', counts.ready || 0, 'Состояние ready', '✓'],
-    ['В обработке', state.pending_count, 'Промежуточные состояния', '↻'],
-    ['Невалидные', counts.invalid || 0, 'По последней проверке', '⊘'],
+    ['Всего аккаунтов', total, 'Записей в базе', 'accounts'],
+    ['Готовы', counts.ready || 0, 'Состояние ready', 'check'],
+    ['В обработке', state.pending_count, 'Промежуточные состояния', 'refresh'],
+    ['Невалидные', counts.invalid || 0, 'По последней проверке', 'ban'],
   ];
-  $('metrics').replaceChildren(...metrics.map(([title, value, note, icon]) => {
-    const card = element('article', null, 'metric'), label = element('div', title, 'metric-label');
-    label.append(element('span', icon, 'metric-icon')); card.append(label, element('p', number(value), 'metric-value'), element('p', note, 'metric-note')); return card;
-  }));
+  $('metrics').replaceChildren(...metrics.map(metricCard));
   $('system-state').textContent = state.mode === 'monitor' ? 'Мониторинг БД' : state.stopping ? 'Остановка' : state.running ? 'Обработка запущена' : 'Обработка остановлена';
   $('system-state').className = 'status-pill ' + (state.running ? 'good' : 'accent');
   $('system-detail').textContent = state.mode === 'monitor' ? 'Панель читает сохранённые данные; обработчики в этом процессе не запущены.' : 'Панель подключена к текущему процессу приложения.';
@@ -201,7 +264,9 @@ function renderChart(series) {
   }
   for (const [key,cls] of [['tokens_cleaned','chart-cleaned'],['tokens_sent','chart-sent']]) {
     const points = series.map((row,i) => (40+i*545/Math.max(1,series.length-1))+','+(204-(Number(row[key])||0)/ceiling*184));
-    svg.append(svgElement('polyline',{points:points.join(' '),class:cls}));
+    const line = svgElement('polyline',{points:points.join(' '),class:cls + (enterAnim && !prefersReduced ? ' chart-draw' : '')});
+    svg.append(line);
+    if (enterAnim && !prefersReduced) { try { line.style.setProperty('--len', line.getTotalLength()); } catch (e) {} }
   }
   const positions = [...new Set([0,Math.floor((series.length-1)/2),series.length-1])];
   for (const i of positions) if (series[i]) svg.append(svgElement('text',{x:40+i*545/Math.max(1,series.length-1),y:235,'text-anchor':i===0?'start':i===series.length-1?'end':'middle',class:'chart-label'},series[i].date.slice(5).split('-').reverse().join('.')));
@@ -221,7 +286,7 @@ function renderAccounts(result) {
     const row=element('tr');
     row.append(element('td','#'+account.id,'mono'),element('td',account.username||'Без имени'));
     const status=element('td'); status.append(pill(account.status)); row.append(status,element('td',account.seller_username||'—'),element('td',money(account.price),'nowrap'),element('td',date(account.created_at),'mono nowrap'));
-    const action=element('td'), button=element('button','↗','icon-button'); button.setAttribute('aria-label','Подробнее об аккаунте '+account.id); button.addEventListener('click',()=>showDetails(account)); action.append(button); row.append(action); return row;
+    const action=element('td'), button=element('button',null,'icon-button'); button.append(icon('arrow')); button.setAttribute('aria-label','Подробнее об аккаунте '+account.id); button.addEventListener('click',()=>showDetails(account)); action.append(button); row.append(action); return row;
   }));
 }
 function proxyStatusPill(status) {
@@ -233,17 +298,12 @@ let proxyBusy = false;
 function renderProxies(result) {
   const counts = result.counts || {};
   const metrics = [
-    ['Рабочих', counts.alive || 0, 'Готовы к использованию', '✓'],
-    ['Мёртвых', counts.dead || 0, 'Не прошли проверку', '⊘'],
-    ['Не проверено', counts.unchecked || 0, 'Ожидают проверки', '…'],
-    ['Всего в пуле', counts.total || 0, 'Записей всего', '⇄'],
+    ['Рабочих', counts.alive || 0, 'Готовы к использованию', 'check'],
+    ['Мёртвых', counts.dead || 0, 'Не прошли проверку', 'ban'],
+    ['Не проверено', counts.unchecked || 0, 'Ожидают проверки', 'clock'],
+    ['Всего в пуле', counts.total || 0, 'Записей всего', 'proxies'],
   ];
-  $('proxy-metrics').replaceChildren(...metrics.map(([title, value, note, icon]) => {
-    const card = element('article', null, 'metric'), label = element('div', title, 'metric-label');
-    label.append(element('span', icon, 'metric-icon'));
-    card.append(label, element('p', number(value), 'metric-value'), element('p', note, 'metric-note'));
-    return card;
-  }));
+  $('proxy-metrics').replaceChildren(...metrics.map(metricCard));
   const job = result.job || {};
   proxyBusy = !!job.running;
   const banner = $('proxy-job');
@@ -366,17 +426,12 @@ function renderPurchase(s) {
   $('purchase-worker-note').hidden = !!s.worker_running;
   const p = s.pipeline || {};
   const metrics = [
-    ['Куплено', s.bought || 0, 'Успешных покупок', '🛒'],
-    ['Пропущено мёртвых', s.skipped_dead || 0, 'Отбраковано при покупке', '⊘'],
-    ['В очистке', p.cleaning || 0, 'Сейчас очищаются', '↻'],
-    ['Готово', p.ready || 0, 'Состояние ready', '✓'],
+    ['Куплено', s.bought || 0, 'Успешных покупок', 'purchase'],
+    ['Пропущено мёртвых', s.skipped_dead || 0, 'Отбраковано при покупке', 'ban'],
+    ['В очистке', p.cleaning || 0, 'Сейчас очищаются', 'refresh'],
+    ['Готово', p.ready || 0, 'Состояние ready', 'check'],
   ];
-  $('purchase-metrics').replaceChildren(...metrics.map(([title, value, note, icon]) => {
-    const card = element('article', null, 'metric'), label = element('div', title, 'metric-label');
-    label.append(element('span', icon, 'metric-icon'));
-    card.append(label, element('p', number(value), 'metric-value'), element('p', note, 'metric-note'));
-    return card;
-  }));
+  $('purchase-metrics').replaceChildren(...metrics.map(metricCard));
   const statusText = {idle: 'Задача не запущена', running: 'Задача выполняется', stopping: 'Останавливается',
     done: 'Задача завершена', error: 'Задача прервана'}[s.status] || '—';
   const banner = $('purchase-banner');
@@ -564,10 +619,21 @@ $('accounts-next').addEventListener('click',()=>{if(accountOffset+pageSize<accou
 $('show-pending').addEventListener('click',()=>{$('account-status').value='pending_review';$('account-search').value='';accountOffset=0;location.hash='accounts';});
 $('chart-days').addEventListener('change',loadView);
 $('log-level').addEventListener('change',loadView);
-$('auto-refresh').addEventListener('change',schedule);
+$('auto-refresh').addEventListener('change',()=>{$('live-label').textContent=$('auto-refresh').checked?'Live-обновление':'Обновление вручную';startLive();if($('auto-refresh').checked)loadView();});
 $('refresh').addEventListener('click',loadView);
 $('close-detail').addEventListener('click',()=>$('detail-dialog').close());
 $('boot-retry').addEventListener('click',boot);
 window.addEventListener('hashchange',navigate);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&loggedIn&&$('auto-refresh').checked)loadView();});
+// Рябь по нажатию на кнопки (микровзаимодействие)
+if(!prefersReduced) document.addEventListener('pointerdown',event=>{
+  const button=event.target.closest('.button');
+  if(!button||button.disabled)return;
+  const rect=button.getBoundingClientRect(), size=Math.max(rect.width,rect.height);
+  const ripple=document.createElement('span'); ripple.className='ripple';
+  ripple.style.width=ripple.style.height=size+'px';
+  ripple.style.left=(event.clientX-rect.left-size/2)+'px';
+  ripple.style.top=(event.clientY-rect.top-size/2)+'px';
+  button.append(ripple); ripple.addEventListener('animationend',()=>ripple.remove());
+});
 boot();

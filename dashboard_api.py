@@ -14,7 +14,7 @@ from collections import OrderedDict, deque
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from flask import Flask, Response, jsonify, redirect, request, send_from_directory, session
+from flask import Flask, Response, jsonify, redirect, request, send_from_directory, session, stream_with_context
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import check_password_hash
 
@@ -296,6 +296,62 @@ def get_status():
         pending_count=sum(counts.get(status, 0) for status in ('new', 'validated', 'cleaning', 'cleaned')),
         recovery_mode='manual_review',
     )
+
+
+@app.get('/api/stream')
+def stream():
+    """Server-Sent Events: живые обновления вместо клиентского поллинга.
+
+    Сервер отслеживает дешёвую сигнатуру состояния (счётчики БД, задача покупки,
+    фоновые задания) и шлёт событие 'update' только при изменении; между ними —
+    ping для поддержания соединения. Клиент по событию перечитывает текущую вкладку.
+    """
+    def signature():
+        parts = [stop_requested]
+        try:
+            parts.append(tuple(sorted(db.count_tokens_by_status().items())))
+        except Exception:
+            pass
+        if pipeline is not None:
+            parts.append(getattr(pipeline, 'running', False))
+            try:
+                snap = pipeline.purchase_status()
+                parts.append((snap.get('status'), snap.get('bought'), snap.get('checked'),
+                              snap.get('skipped_dead'), snap.get('errors'),
+                              snap.get('spent'), snap.get('balance')))
+            except Exception:
+                pass
+        with proxy_job_lock:
+            parts.append((proxy_job['running'], proxy_job['done'], proxy_job['finished_at']))
+        with export_job_lock:
+            parts.append((export_job['running'], export_job['done'], export_job['finished_at']))
+        return hash(repr(parts))
+
+    def gen():
+        yield 'retry: 3000\n\n'
+        last = object()
+        heartbeat = time.time()
+        deadline = time.time() + 1800  # переподключение раз в 30 мин ограничивает жизнь потока
+        while time.time() < deadline:
+            try:
+                sig = signature()
+            except Exception:
+                sig = None
+            now = time.time()
+            if sig != last:
+                last = sig
+                heartbeat = now
+                yield f'event: update\ndata: {int(now)}\n\n'
+            elif now - heartbeat >= 15:
+                heartbeat = now
+                yield ': ping\n\n'
+            time.sleep(1)
+
+    response = Response(stream_with_context(gen()), mimetype='text/event-stream')
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['X-Accel-Buffering'] = 'no'
+    response.headers['Connection'] = 'keep-alive'
+    return response
 
 
 @app.get('/api/network')
