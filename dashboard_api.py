@@ -67,7 +67,7 @@ def init_dashboard(pipeline_instance, config_dict, config_file=None):
         SESSION_REFRESH_EACH_REQUEST=False,
         PERMANENT_SESSION_LIFETIME=timedelta(hours=settings['session_hours']),
         MAX_CONTENT_LENGTH=MAX_BODY_BYTES,
-        TRUSTED_HOSTS=[settings['hostname']],
+        TRUSTED_HOSTS=[f"[{settings['hostname']}]" if ':' in settings['hostname'] else settings['hostname']],
     )
     db = pipeline.db if pipeline is not None else Database(config['database']['path'])
     started_at, stop_requested = time.time(), False
@@ -112,7 +112,7 @@ def protect_request():
                 return error('Источник запроса не разрешён', 403)
             expected = session.get('csrf', '')
             actual = request.headers.get('X-CSRF-Token', '')
-            if not expected or len(actual) > 200 or not hmac.compare_digest(expected, actual):
+            if not expected or len(actual) > 200 or not actual.isascii() or not hmac.compare_digest(expected, actual):
                 return error('Обновите страницу и повторите действие', 403)
 
 

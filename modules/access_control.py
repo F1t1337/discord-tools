@@ -45,9 +45,15 @@ def dashboard_settings(config):
         raise ValueError("Некорректный порт в DASHBOARD_PUBLIC_URL") from None
     if dashboard.get('host', '127.0.0.1') not in {'127.0.0.1', '::1', 'localhost'}:
         raise ValueError("dashboard.host должен быть loopback-адресом; удалённый доступ работает через HTTPS-прокси")
+    # Match the browser's serialized Origin: lowercase host, no default port,
+    # and brackets around IPv6 literals. Keep nondefault ports significant.
+    hostname = parts.hostname.encode('idna').decode('ascii')
+    authority = f'[{hostname}]' if ':' in hostname else hostname
+    if parts.port is not None and parts.port != {'http': 80, 'https': 443}[parts.scheme]:
+        authority += f':{parts.port}'
     return {
         "secret": secret, "password_hash": password_hash, "username": username,
-        "origin": f"{parts.scheme}://{parts.netloc}", "hostname": parts.hostname,
+        "origin": f"{parts.scheme}://{authority}", "hostname": hostname,
         "secure": parts.scheme == "https",
         "session_hours": max(1, min(int(dashboard.get("session_hours", 8)), 24)),
     }
