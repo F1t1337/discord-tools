@@ -1,8 +1,18 @@
 """Persistent purchase-to-submission accounting, in integer kopecks."""
-from datetime import date, datetime, time as day_time, timedelta
+from datetime import date, datetime, time as day_time, timedelta, timezone as dt_timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import time
 from zoneinfo import ZoneInfo
+
+
+def resolve_zone(timezone):
+    """Возвращает объект таймзоны. Если системной базы IANA нет (не установлен пакет
+    tzdata), не роняем панель, а используем фиксированный сдвиг рабочего региона
+    (UTC+4, Europe/Saratov без перехода на летнее время)."""
+    try:
+        return ZoneInfo(timezone)
+    except Exception:
+        return dt_timezone(timedelta(hours=4))
 
 
 def money_minor(value):
@@ -108,7 +118,7 @@ class Finance:
                 WHERE export_id=? AND price_minor IS NULL''', (amount, time.time(), export_id))
 
     def report(self, period, anchor=None, timezone='Europe/Saratov', offset=0):
-        zone = ZoneInfo(timezone)
+        zone = resolve_zone(timezone)
         selected = date.fromisoformat(anchor) if anchor else datetime.now(zone).date()
         if period == 'day':
             start, end = selected, selected + timedelta(days=1)
