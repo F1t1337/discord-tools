@@ -411,7 +411,7 @@ class ReviewChecks(unittest.TestCase):
             conn.execute('DROP TABLE export_batches')
             conn.execute('PRAGMA user_version=2')
         migrated = Database(self.config['database']['path'])
-        self.assertEqual(migrated.schema_version(), 5)
+        self.assertEqual(migrated.schema_version(), 6)
         self.assertEqual(migrated.get_token_info('synthetic-record-A')['status'], 'ready')
         self.assertEqual(len(list(self.path.glob('test.db.backup_*'))), 1)
         Database(self.config['database']['path'])

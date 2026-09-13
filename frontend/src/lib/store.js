@@ -1,7 +1,7 @@
 // Глобальные реактивные сторы приложения.
 import { writable } from 'svelte/store';
 
-export const VIEWS = ['overview', 'purchase', 'accounts', 'tokens', 'network', 'proxies', 'logs', 'settings'];
+export const VIEWS = ['overview', 'statistics', 'purchase', 'accounts', 'tokens', 'network', 'proxies', 'logs', 'settings'];
 
 export function currentHash() {
   const hash = location.hash.slice(1);
@@ -17,6 +17,7 @@ export const refreshTick = writable(0);
 export const NAV = [
   { section: 'Обзор', items: [
     { id: 'overview', label: 'Дашборд', icon: 'overview' },
+    { id: 'statistics', label: 'Статистика', icon: 'wallet' },
   ] },
   { section: 'Работа', items: [
     { id: 'purchase', label: 'Задача покупки', icon: 'purchase' },
@@ -34,6 +35,7 @@ export const NAV = [
 ];
 
 export const TITLES = {
+  statistics: ['Статистика', 'Расходы, доходы и прибыль по закупкам и сдачам.'],
   overview: ['Дашборд', 'Текущее состояние системы и последние изменения.'],
   purchase: ['Задача покупки', 'Покупка аккаунтов с LZT по фильтрам и обработка в реальном времени.'],
   accounts: ['Аккаунты', 'Поиск и просмотр записей без раскрытия токенов доступа.'],

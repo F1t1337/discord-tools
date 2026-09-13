@@ -638,7 +638,7 @@ class TokenPipeline:
     # ==================== ЗАДАЧА ПОКУПКИ АККАУНТОВ ====================
 
     def enqueue_purchased(self, token: str, item_id=None, price: float = 0,
-                          seller_username: str = 'lzt_market'):
+                          seller_username: str = 'lzt_market', purchase_id=None):
         """Ставит купленный аккаунт в конвейер обработки.
 
         Сохраняет запись в БД, обновляет статистику покупок и кладёт токен в очередь
@@ -649,10 +649,11 @@ class TokenPipeline:
                 raise RuntimeError('Обработка остановлена')
             token_id = self.db.add_token(
                 token=token, lzt_item_id=item_id,
-                seller_username=seller_username, price=price)
+                seller_username=seller_username, price=price, purchase_id=purchase_id)
             if token_id is None:
                 return None  # дубликат — уже в БД
-            self.db.update_statistics(tokens_bought=1, money_spent=price or 0)
+            if purchase_id is None:
+                self.db.update_statistics(tokens_bought=1, money_spent=price or 0)
             self.new_tokens_queue.put({
                 'token': token, 'item_id': item_id,
                 'username': 'LZT', 'seller_username': seller_username,
@@ -721,14 +722,15 @@ class TokenPipeline:
                 added += 1
         return {'added': added, 'total': len(tokens), 'duplicates': duplicates, 'errors': errors}
 
-    def export_ready_tokens(self, progress_cb=None, send_telegram=True) -> dict:
+    def export_ready_tokens(self, progress_cb=None, send_telegram=True, purchase_id=None) -> dict:
         """Save an atomic, durable export before attempting Telegram delivery."""
         if not self._export_lock.acquire(blocking=False):
             raise RuntimeError('Выгрузка уже выполняется')
         try:
             if not self.running:
                 raise RuntimeError('Обработка остановлена')
-            ready_tokens = self.db.get_ready_tokens(limit=1000)
+            from modules.finance import Finance
+            ready_tokens = Finance(self.db).export_candidates(purchase_id)
             total = len(ready_tokens)
             valid_tokens, invalid_tokens = [], []
             deferred = 0
@@ -742,7 +744,9 @@ class TokenPipeline:
                     (valid_tokens if is_valid else invalid_tokens).append(token)
                 if progress_cb:
                     progress_cb(i, total, len(valid_tokens), len(invalid_tokens))
-            result = self.db.commit_export(valid_tokens, invalid_tokens)
+            if purchase_id is not None and deferred:
+                raise RuntimeError('Часть закупки временно не проверена. Повторите выгрузку позднее.')
+            result = self.db.commit_export(valid_tokens, invalid_tokens, purchase_id=purchase_id)
             result.update(total=total, deferred=deferred, delivery='not_needed')
             self.ready_tokens_notification_sent = False
             if result['export_id'] is not None and not send_telegram:

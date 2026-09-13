@@ -9,6 +9,7 @@
   import ConfirmDialog from './components/ConfirmDialog.svelte';
   import Login from './views/Login.svelte';
   import Overview from './views/Overview.svelte';
+  import Statistics from './views/Statistics.svelte';
   import Purchase from './views/Purchase.svelte';
   import Accounts from './views/Accounts.svelte';
   import Tokens from './views/Tokens.svelte';
@@ -17,7 +18,7 @@
   import Logs from './views/Logs.svelte';
   import Settings from './views/Settings.svelte';
 
-  const VIEWMAP = { overview: Overview, purchase: Purchase, accounts: Accounts, tokens: Tokens,
+  const VIEWMAP = { overview: Overview, statistics: Statistics, purchase: Purchase, accounts: Accounts, tokens: Tokens,
     network: Network, proxies: Proxies, logs: Logs, settings: Settings };
   const CurrentView = $derived(VIEWMAP[$route] || Overview);
 

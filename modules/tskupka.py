@@ -2,6 +2,8 @@
 import math
 import re
 import threading
+import logging
+from modules.finance import Finance
 
 import requests
 
@@ -59,6 +61,39 @@ class TskupkaService:
         self.db = db
         self.client = TskupkaClient(api_key)
         self.refresh_lock = threading.Lock()
+        self._stop = threading.Event()
+        self._thread = None
+
+    def start(self):
+        if not self.configured or (self._thread and self._thread.is_alive()):
+            return
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._poll, name='TskupkaPrices', daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=2)
+
+    def _poll(self):
+        while not self._stop.is_set():
+            try:
+                self.poll_once()
+            except Exception as exc:
+                logging.getLogger(__name__).error('Ошибка опроса Tskupka: %s', type(exc).__name__)
+            self._stop.wait(1)
+
+    def poll_once(self):
+        if not self.configured:
+            return
+        for export_id in Finance(self.db).due_tasks():
+            if self._stop.is_set():
+                break
+            try:
+                self.refresh(export_id, background=True)
+            except (TskupkaError, RuntimeError, ValueError):
+                continue
 
     @property
     def configured(self):
@@ -77,15 +112,20 @@ class TskupkaService:
             raise
         # If this write fails, the durable 'sending' reservation still prevents duplicates.
         self.db.save_tskupka_task(export_id, 'submitted', task_id=task_id, summary=safe_summary(data))
+        Finance(self.db).release_poll(export_id)
         return self.db.get_tskupka_task(export_id)
 
-    def refresh(self, export_id):
+    def refresh(self, export_id, background=False):
         task = self.db.get_tskupka_task(export_id)
         if not task or not task['task_id']:
             raise ValueError('No task ID')
         if not self.refresh_lock.acquire(blocking=False):
             raise RuntimeError('Обновление Tskupka уже выполняется.')
+        claimed = False
         try:
+            claimed = Finance(self.db).claim_poll(export_id, force=not background)
+            if not claimed:
+                return task
             data = self.client.status(task['task_id'])
             if data.get('id') != task['task_id']:
                 raise TskupkaError('Tskupka вернула другой ID задачи.')
@@ -94,9 +134,17 @@ class TskupkaService:
                 raise TskupkaError('Tskupka вернула неизвестный формат статуса.')
             self.db.save_tskupka_task(export_id, 'submitted', remote_status=status,
                                      summary={**task['summary'], **safe_summary(data)})
+            try:
+                Finance(self.db).receive_price(export_id, data.get('price_result'))
+            except ValueError:
+                raise TskupkaError('Неизвестный формат price_result: сумма ещё не учтена.') from None
         except TskupkaError as exc:
             self.db.save_tskupka_task(export_id, 'submitted', error=str(exc))
             raise
         finally:
-            self.refresh_lock.release()
+            try:
+                if claimed:
+                    Finance(self.db).release_poll(export_id)
+            finally:
+                self.refresh_lock.release()
         return self.db.get_tskupka_task(export_id)

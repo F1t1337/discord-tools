@@ -22,6 +22,7 @@ from modules.access_control import dashboard_settings, telegram_owner_ids
 from modules.configuration import PROJECT_ROOT, load_config, load_env_file, save_config_value
 from modules.database import Database
 from modules.tskupka import TskupkaService, TskupkaError
+from modules.finance import Finance
 
 logger = logging.getLogger(__name__)
 ASSETS = PROJECT_ROOT / 'dashboard'
@@ -420,6 +421,16 @@ def statistics_range():
         result.append(rows.get(day, {'date': day, 'tokens_bought': 0, 'tokens_cleaned': 0,
                                      'tokens_sent': 0, 'money_spent': 0}))
     return jsonify(result)
+
+
+@app.get('/api/statistics/finance')
+def financial_statistics():
+    try:
+        offset = bounded_int('offset', 0, 0, 10000000)
+        return jsonify(Finance(db).report(request.args.get('period', 'day'),
+            request.args.get('date') or None, 'Europe/Saratov', offset))
+    except (ValueError, OverflowError):
+        return error('Укажите период day/week/month и дату YYYY-MM-DD')
 
 
 @app.get('/api/accounts')
@@ -849,10 +860,24 @@ def upload_tokens():
 
 @app.post('/api/tokens/export')
 def export_tokens(destination='telegram'):
+    data = request.get_json(silent=True)
+    if data is None and not request.data:
+        data = {}
+    if not isinstance(data, dict):
+        return error('Нужен JSON-объект')
+    purchase_id = data.get('purchase_id')
+    if purchase_id is not None and (type(purchase_id) is not int or not 0 < purchase_id <= 2**63-1):
+        return error('Неверный номер закупки')
     if destination == 'tskupka' and not tskupka.configured:
         return error('На сервере не задан TSKUPKA_API_KEY', 503)
     if pipeline is None or not pipeline.running or stop_requested:
         return error('Выгрузка доступна только при запущенной обработке', 503)
+    try:
+        Finance(db).export_candidates(purchase_id)
+    except ValueError as exc:
+        return error(str(exc), 404)
+    except RuntimeError as exc:
+        return error(str(exc), 409)
     with export_job_lock:
         if stop_requested or not pipeline.running:
             return error('Обработка останавливается', 409)
@@ -867,7 +892,7 @@ def export_tokens(destination='telegram'):
             with export_job_lock:
                 export_job.update(done=done, total=total, valid=valid, invalid=invalid)
         try:
-            result = pipeline.export_ready_tokens(progress_cb=progress, send_telegram=destination != 'tskupka')
+            result = pipeline.export_ready_tokens(progress_cb=progress, send_telegram=destination != 'tskupka', purchase_id=purchase_id)
             with export_job_lock:
                 export_job.update(total=result['total'], valid=len(result['valid_tokens']),
                                   invalid=result['invalid'], deferred=result['deferred'],
@@ -906,6 +931,7 @@ def export_status():
     for item in history:
         item['tskupka'] = tasks.get(item['id'])
     result.update(available=bool(history), history=history, tskupka_configured=tskupka.configured,
+                  purchases=Finance(db).batches(),
                   worker_running=bool(pipeline is not None and pipeline.running and not stop_requested))
     return jsonify(result)
 
@@ -996,7 +1022,11 @@ def run_dashboard(host='127.0.0.1', port=5000, debug=False):
             raise ValueError('За HTTPS-прокси приложение должно слушать только loopback')
         options.update(trusted_proxy='127.0.0.1', trusted_proxy_count=1,
                        trusted_proxy_headers={'x-forwarded-for', 'x-forwarded-proto'})
-    serve(app, **options)
+    tskupka.start()
+    try:
+        serve(app, **options)
+    finally:
+        tskupka.stop()
 
 
 def main():

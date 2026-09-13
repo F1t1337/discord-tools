@@ -11,6 +11,7 @@ import time
 from typing import Dict, Optional
 
 from modules.lzt_monitor import PurchaseError
+from modules.finance import Finance
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ class PurchaseTaskManager:
             'balance_start': None, 'balance': None, 'spent': 0.0,
             'bought': 0, 'checked': 0, 'skipped_dead': 0, 'errors': 0,
             'started_at': None, 'finished_at': None, 'error': None, 'message': None,
+            'purchase_id': None,
         }
 
     # ---------- потокобезопасные помощники ----------
@@ -116,18 +118,25 @@ class PurchaseTaskManager:
                 raise RuntimeError('Задача покупки уже выполняется')
             self._stop.clear()
             balance = self.lzt.get_balance()
+            purchase_id = Finance(self.db).start_purchase(count)
             self._state = self._idle_state()
             self._state.update(
                 status='running', pmax=pmax, chat_min=chat_min, requested=count,
                 cleaner_workers=cleaner_workers, balance_start=balance, balance=balance,
                 started_at=time.time(), message='Поиск аккаунтов…')
+            self._state['purchase_id'] = purchase_id
         if self.set_cleaner_workers_cb:
             try:
                 self.set_cleaner_workers_cb(cleaner_workers)
             except Exception:
                 logger.warning('Не удалось задать число потоков очистки для задачи')
         self._thread = threading.Thread(target=self._run, name='PurchaseTask', daemon=True)
-        self._thread.start()
+        try:
+            self._thread.start()
+        except Exception:
+            self._set(status='error', error='StartFailed', finished_at=time.time())
+            Finance(self.db).finish_purchase(self._get('purchase_id'), 'error')
+            raise
         return self.snapshot()
 
     def stop(self) -> bool:
@@ -188,6 +197,10 @@ class PurchaseTaskManager:
                     try:
                         token, raw = self.lzt.fast_buy(item_id, price)
                     except PurchaseError as exc:
+                        if exc.purchased:
+                            Finance(self.db).record_purchase(self._get('purchase_id'), item_id, price)
+                            self._bump(bought=1, spent=price, errors=1)
+                            continue
                         if exc.out_of_balance:
                             self._set(message='Недостаточно баланса для покупки')
                             self._stop.set()
@@ -201,19 +214,20 @@ class PurchaseTaskManager:
                     seller = ''
                     if isinstance(raw, dict) and isinstance(raw.get('seller'), dict):
                         seller = raw['seller'].get('username', '')
+                    # The expense exists even if intake or cleaning subsequently fails.
+                    Finance(self.db).record_purchase(self._get('purchase_id'), item_id, price)
+                    with self._lock:
+                        self._state['bought'] += 1
+                        self._state['spent'] = round(self._state['spent'] + price, 2)
+                        self._state['message'] = f"Куплено {self._state['bought']} из {requested}"
                     try:
                         self.intake_cb(token=token, item_id=item_id, price=price,
-                                       seller_username=seller or 'lzt_market')
+                                       seller_username=seller or 'lzt_market', purchase_id=self._get('purchase_id'))
                     except Exception:
                         logger.error('Не удалось поставить купленный токен в обработку')
                         self._bump(errors=1)
                         continue
 
-                    with self._lock:
-                        self._state['bought'] += 1
-                        self._state['spent'] = round(self._state['spent'] + price, 2)
-                        self._state['message'] = (
-                            f"Куплено {self._state['bought']} из {requested}")
                     time.sleep(self.BUY_DELAY)
 
                 page += 1
@@ -239,6 +253,7 @@ class PurchaseTaskManager:
                             f'Завершено: куплено {bought} из {requested_final} '
                             f'(часть аккаунтов отбракована или закончилась выдача)')
                 self._state['finished_at'] = time.time()
+            Finance(self.db).finish_purchase(self._get('purchase_id'), self._get('status'))
 
     # ---------- статус ----------
 

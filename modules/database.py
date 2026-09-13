@@ -10,7 +10,7 @@ from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 _SCHEMA_LOCK = threading.RLock()
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 class Database:
@@ -181,6 +181,32 @@ class Database:
                 created_at REAL NOT NULL,
                 updated_at REAL NOT NULL
             )''')
+            cursor.execute('''CREATE TABLE IF NOT EXISTS purchase_batches (
+                id INTEGER PRIMARY KEY, status TEXT NOT NULL, requested INTEGER NOT NULL,
+                started_at REAL NOT NULL, finished_at REAL
+            )''')
+            cursor.execute('''CREATE TABLE IF NOT EXISTS purchase_expenses (
+                item_id TEXT PRIMARY KEY, purchase_id INTEGER NOT NULL,
+                cost_minor INTEGER NOT NULL, bought_at REAL NOT NULL
+            )''')
+            cursor.execute('''CREATE TABLE IF NOT EXISTS legacy_expenses (
+                date TEXT PRIMARY KEY, cost_minor INTEGER NOT NULL
+            )''')
+            if cursor.execute('PRAGMA user_version').fetchone()[0] < 6:
+                cursor.execute('''INSERT OR IGNORE INTO legacy_expenses
+                    SELECT date, CAST(ROUND(COALESCE(money_spent,0) * 100) AS INTEGER) FROM statistics''')
+            for table, additions in {
+                'export_batches': {'purchase_id': 'INTEGER'},
+                'tskupka_tasks': {'price_minor': 'INTEGER', 'price_at': 'REAL',
+                                 'next_poll_at': 'REAL NOT NULL DEFAULT 0',
+                                 'poll_lease_until': 'REAL NOT NULL DEFAULT 0'},
+            }.items():
+                present = {r['name'] for r in cursor.execute(f'PRAGMA table_info({table})')}
+                for name, declaration in additions.items():
+                    if name not in present:
+                        cursor.execute(f'ALTER TABLE {table} ADD COLUMN {name} {declaration}')
+            cursor.execute('CREATE UNIQUE INDEX IF NOT EXISTS export_purchase ON export_batches(purchase_id)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS expense_date ON purchase_expenses(bought_at)')
 
             # Additive migration preserves IDs, statuses and existing rows.
             columns = {row['name'] for row in cursor.execute("PRAGMA table_info(tokens)")}
@@ -188,6 +214,7 @@ class Database:
                 'seller_username': 'TEXT', 'username': 'TEXT', 'lzt_item_id': 'INTEGER',
                 'price': 'REAL', 'validated_at': 'REAL', 'cleaned_at': 'REAL',
                 'sent_at': 'REAL', 'error': 'TEXT', 'cleaning_progress': 'TEXT',
+                'purchase_id': 'INTEGER',
             }
             for name, declaration in additions.items():
                 if name not in columns:
@@ -250,7 +277,7 @@ class Database:
     # ==================== РАБОТА С ТОКЕНАМИ ====================
     
     def add_token(self, token: str, lzt_item_id: int = None, 
-                  seller_username: str = None, price: float = None) -> Optional[int]:
+                  seller_username: str = None, price: float = None, purchase_id=None) -> Optional[int]:
         """
         Добавляет новый токен в базу
         
@@ -267,9 +294,9 @@ class Database:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
-                    INSERT INTO tokens (token, lzt_item_id, seller_username, price, status, created_at)
-                    VALUES (?, ?, ?, ?, 'new', ?)
-                """, (token, lzt_item_id, seller_username, price, datetime.now().timestamp()))
+                    INSERT INTO tokens (token, lzt_item_id, seller_username, price, status, created_at, purchase_id)
+                    VALUES (?, ?, ?, ?, 'new', ?, ?)
+                """, (token, lzt_item_id, seller_username, price, datetime.now().timestamp(), purchase_id))
                 
                 token_id = cursor.lastrowid
                 
@@ -423,7 +450,7 @@ class Database:
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
     
-    def commit_export(self, valid_tokens, invalid_tokens):
+    def commit_export(self, valid_tokens, invalid_tokens, purchase_id=None):
         """Persist the downloadable snapshot and status changes in one transaction.
 
         Only records still ready are claimed. A crash or write error rolls back
@@ -431,24 +458,30 @@ class Database:
         """
         with self.get_connection() as conn:
             conn.execute('BEGIN IMMEDIATE')
+            from modules.finance import ensure_exportable
+            if purchase_id is not None:
+                ensure_exportable(conn, purchase_id)
+                ready = {r[0] for r in conn.execute("SELECT token FROM tokens WHERE purchase_id=? AND status='ready'", (purchase_id,))}
+                if set(valid_tokens) | set(invalid_tokens) != ready:
+                    raise RuntimeError('Состав закупки изменился. Повторите выгрузку.')
             batch_id, saved, invalid_count = None, [], 0
             now = time.time()
             for token in dict.fromkeys(valid_tokens):
                 changed = conn.execute(
                     "UPDATE tokens SET status='sent', sent_at=?, error=NULL "
-                    "WHERE token=? AND status='ready'", (now, token)).rowcount
+                    "WHERE token=? AND status='ready' AND purchase_id IS ?", (now, token, purchase_id)).rowcount
                 if not changed:
                     continue
                 if batch_id is None:
                     batch_id = conn.execute(
-                        'INSERT INTO export_batches(created_at) VALUES (?)', (now,)).lastrowid
+                        'INSERT INTO export_batches(created_at, purchase_id) VALUES (?, ?)', (now, purchase_id)).lastrowid
                 conn.execute('INSERT INTO export_items(batch_id, token) VALUES (?, ?)',
                              (batch_id, token))
                 saved.append(token)
             for token in dict.fromkeys(invalid_tokens):
                 invalid_count += conn.execute(
                     "UPDATE tokens SET status='invalid', error='Failed validation on export' "
-                    "WHERE token=? AND status='ready'", (token,)).rowcount
+                    "WHERE token=? AND status='ready' AND purchase_id IS ?", (token, purchase_id)).rowcount
             if saved:
                 conn.execute("""INSERT INTO statistics(date, tokens_sent) VALUES (?, ?)
                     ON CONFLICT(date) DO UPDATE SET tokens_sent=tokens_sent+excluded.tokens_sent
@@ -463,7 +496,7 @@ class Database:
 
     def list_exports(self, limit=100):
         with self.get_connection() as conn:
-            rows = conn.execute('''SELECT b.id, b.created_at, b.delivery, COUNT(*) AS count
+            rows = conn.execute('''SELECT b.id, b.created_at, b.delivery, b.purchase_id, COUNT(*) AS count
                 FROM export_batches b JOIN export_items i ON i.batch_id=b.id
                 GROUP BY b.id ORDER BY b.id DESC LIMIT ?''', (limit,)).fetchall()
             return [dict(row) for row in rows]

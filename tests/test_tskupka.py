@@ -161,7 +161,7 @@ class TskupkaTests(unittest.TestCase):
             conn.execute('DROP TABLE tskupka_tasks')
             conn.execute('PRAGMA user_version=4')
         db = Database(self.config['database']['path'])
-        self.assertEqual(db.schema_version(), 5)
+        self.assertEqual(db.schema_version(), 6)
         self.assertEqual(db.get_export_tokens(self.export_id), ['synthetic-tskupka-token'])
         self.assertEqual(len(list(Path(db.db_path).parent.glob('test.db.backup_*'))), 1)
         Database(db.db_path)

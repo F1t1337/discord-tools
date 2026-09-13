@@ -19,10 +19,11 @@ class PurchaseError(RuntimeError):
     retryable=True — временная (сеть/ретрай), товар можно пропустить.
     """
 
-    def __init__(self, message: str, *, out_of_balance: bool = False, retryable: bool = False):
+    def __init__(self, message: str, *, out_of_balance: bool = False, retryable: bool = False, purchased: bool = False):
         super().__init__(message)
         self.out_of_balance = out_of_balance
         self.retryable = retryable
+        self.purchased = purchased
 
 
 class LZTMonitor:
@@ -177,7 +178,7 @@ class LZTMonitor:
                     if token:
                         item = fetched
             if not token:
-                raise PurchaseError('token not found in purchased item')
+                raise PurchaseError('token not found in purchased item', purchased=True)
             return token, item
 
         # Разбор ошибки
