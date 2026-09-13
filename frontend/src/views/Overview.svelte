@@ -7,6 +7,7 @@
   import Chart from '../components/Chart.svelte';
   import DetailList from '../components/DetailList.svelte';
   import StatusPill from '../components/StatusPill.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
   import { reveal } from '../lib/anim.js';
 
   let status = $state(null);
@@ -39,6 +40,7 @@
 
   const counts = $derived(status?.counts || {});
   const total = $derived(Object.values(counts).reduce((a, n) => a + n, 0));
+  const spark7 = (key) => series.slice(-7).map((r) => Number(r[key]) || 0);
   const distribution = $derived(Object.entries(counts).sort((a, b) => b[1] - a[1]));
   const threadsAlive = $derived(status ? Object.values(status.threads || {}).filter(Boolean).length : 0);
   const threadsTotal = $derived(status ? Object.keys(status.threads || {}).length : 0);
@@ -56,6 +58,11 @@
 
 {#if error}<div class="alert error">{error} Показаны последние полученные данные.</div>{/if}
 
+{#if !status && !error}
+  <Skeleton kind="metrics" />
+  <Skeleton kind="panels" count={2} />
+{/if}
+
 {#if status}
   <div class="system-strip">
     <div>
@@ -69,11 +76,21 @@
   </div>
 
   <div class="metrics">
-    <Metric title="Всего аккаунтов" value={total} note="Записей в базе" icon="accounts" index={0} />
-    <Metric title="Готовы" value={counts.ready || 0} note="Состояние ready" icon="check" index={1} />
-    <Metric title="В обработке" value={status.pending_count} note="Промежуточные состояния" icon="refresh" index={2} />
+    <Metric title="Всего аккаунтов" value={total} note="Записей в базе" icon="accounts" index={0}
+      spark={spark7('tokens_bought')} sparkTitle="Куплено за 7 дней" />
+    <Metric title="Готовы" value={counts.ready || 0} note="Состояние ready" icon="check" index={1}
+      spark={spark7('tokens_sent')} sparkTitle="Отправлено за 7 дней" />
+    <Metric title="В обработке" value={status.pending_count} note="Промежуточные состояния" icon="refresh" index={2}
+      spark={spark7('tokens_cleaned')} sparkTitle="Очищено за 7 дней" />
     <Metric title="Невалидные" value={counts.invalid || 0} note="По последней проверке" icon="ban" index={3} />
   </div>
+
+  {#if (counts.ready || 0) === 0}
+    <div class="alert cta-alert">
+      <div><strong>Готовых токенов пока нет</strong><p>Купите и обработайте аккаунты, чтобы они появились здесь.</p></div>
+      <a class="button primary" href="#purchase">Запустить задачу покупки</a>
+    </div>
+  {/if}
 
   <div class="overview-grid">
     <article class="panel" use:reveal={0}>

@@ -3,8 +3,10 @@
   import { refreshTick } from '../lib/store.js';
   import PageHeader from '../components/PageHeader.svelte';
   import Segmented from '../components/Segmented.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
 
   let data = $state({ items: [], available: true });
+  let loaded = $state(false);
   let error = $state('');
   let level = $state('');
   let token = 0;
@@ -17,7 +19,7 @@
 
   async function load() {
     const my = ++token;
-    try { const r = await api('/logs?limit=100&level=' + level); if (my === token) { data = r; error = ''; } }
+    try { const r = await api('/logs?limit=100&level=' + level); if (my === token) { data = r; error = ''; loaded = true; } }
     catch (e) { if (my === token) error = e.message; }
   }
   $effect(() => { $refreshTick; level; load(); });
@@ -29,6 +31,8 @@
 
 <div class="toolbar"><Segmented {options} bind:value={level} ariaLabel="Уровень журнала" /></div>
 
+{#if !loaded && !error}<Skeleton kind="list" count={6} />{/if}
+{#if loaded}
 <div class="panel log-panel">
   {#if !data.items.length}
     <div class="empty-state">
@@ -48,3 +52,4 @@
     {/each}
   {/if}
 </div>
+{/if}

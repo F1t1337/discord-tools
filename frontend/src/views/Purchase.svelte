@@ -1,15 +1,13 @@
 <script>
   import { api } from '../lib/api.js';
-  import { refreshTick, toast, tick, confirmDialog } from '../lib/store.js';
+  import { toast, tick, confirmDialog, purchaseStatus } from '../lib/store.js';
   import { number, money } from '../lib/format.js';
   import PageHeader from '../components/PageHeader.svelte';
   import Metric from '../components/Metric.svelte';
   import Icon from '../components/Icon.svelte';
   import { reveal } from '../lib/anim.js';
 
-  let status = $state(null);
-  let error = $state('');
-  let token = 0;
+  const status = $derived($purchaseStatus);
 
   let pmax = $state(80);
   let chatMin = $state(60);
@@ -18,12 +16,25 @@
   let count = $state(null);
   let workers = $state(20);
 
-  async function load() {
-    const my = ++token;
-    try { const s = await api('/purchase/status'); if (my === token) { status = s; error = ''; } }
-    catch (e) { if (my === token) error = e.message; }
+  // Пресеты фильтра (цена + мин. чатов) в localStorage.
+  const PRESET_KEY = 'purchase_presets';
+  function loadPresets() {
+    try { return JSON.parse(localStorage.getItem(PRESET_KEY)) || []; } catch (e) { return []; }
   }
-  $effect(() => { $refreshTick; load(); });
+  let presets = $state(loadPresets());
+  function savePreset() {
+    if (!(pmax > 0)) return;
+    const item = { pmax: Number(pmax), chatMin: Number(chatMin) };
+    if (presets.some((p) => p.pmax === item.pmax && p.chatMin === item.chatMin)) return toast('Такой пресет уже есть');
+    presets = [item, ...presets].slice(0, 8);
+    try { localStorage.setItem(PRESET_KEY, JSON.stringify(presets)); } catch (e) {}
+    toast('Пресет сохранён');
+  }
+  function applyPreset(p) { pmax = p.pmax; chatMin = p.chatMin; }
+  function removePreset(index) {
+    presets = presets.filter((_, i) => i !== index);
+    try { localStorage.setItem(PRESET_KEY, JSON.stringify(presets)); } catch (e) {}
+  }
 
   const running = $derived(status && (status.status === 'running' || status.status === 'stopping'));
   const workerReady = $derived(!!status?.worker_running);
@@ -79,7 +90,6 @@
 {#if !workerReady}
   <div class="alert warning">Обработка не запущена. Задача покупки недоступна: запустите сервис с обработчиком.</div>
 {/if}
-{#if error}<div class="alert error">{error}</div>{/if}
 
 <div class="metrics">
   <Metric title="Куплено" value={status?.bought || 0} note="Успешных покупок" icon="purchase" index={0} />
@@ -99,7 +109,20 @@
       <div class="field"><label for="chatmin">Мин. чатов</label>
         <input id="chatmin" type="number" min="0" max="1000000" step="1" bind:value={chatMin}></div>
       <button class="button primary" onclick={runEstimate} disabled={estimating || !workerReady}>Рассчитать</button>
+      <button class="button secondary" onclick={savePreset} title="Сохранить текущий фильтр">Сохранить пресет</button>
     </div>
+    {#if presets.length}
+      <div class="presets">
+        {#each presets as p, i}
+          <span class="preset-chip">
+            <button type="button" onclick={() => applyPreset(p)}>{money(p.pmax)} · {number(p.chatMin)} чат.</button>
+            <button type="button" class="preset-del" aria-label="Удалить пресет" onclick={() => removePreset(i)}>
+              <Icon name="close" size={13} />
+            </button>
+          </span>
+        {/each}
+      </div>
+    {/if}
   </section>
 
   {#if estimate}

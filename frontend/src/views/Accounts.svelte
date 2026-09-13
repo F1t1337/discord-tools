@@ -7,10 +7,12 @@
   import Segmented from '../components/Segmented.svelte';
   import Drawer from '../components/Drawer.svelte';
   import DetailList from '../components/DetailList.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
   import Icon from '../components/Icon.svelte';
 
   const pageSize = 25;
   let result = $state({ items: [], total: 0 });
+  let loaded = $state(false);
   let error = $state('');
   let statusFilter = $state('');
   let searchInput = $state('');
@@ -34,7 +36,7 @@
     const my = ++token;
     try {
       const r = await api('/accounts?' + new URLSearchParams({ limit: pageSize, offset, status: statusFilter, search }));
-      if (my === token) { result = r; error = ''; }
+      if (my === token) { result = r; error = ''; loaded = true; }
     } catch (e) { if (my === token) error = e.message; }
   }
   $effect(() => { $refreshTick; statusFilter; search; offset; load(); });
@@ -66,6 +68,9 @@
 </div>
 <div class="toolbar"><Segmented {options} bind:value={statusFilter} ariaLabel="Фильтр по состоянию" /></div>
 
+{#if !loaded && !error}
+  <Skeleton kind="table" count={8} />
+{:else}
 <div class="panel table-panel">
   <div class="table-overflow">
     <table>
@@ -97,6 +102,7 @@
     </div>
   </div>
 </div>
+{/if}
 <p class="table-note">В панели и отчёте нет секретных токенов. CSV содержит до 10 000 записей с выбранными фильтрами.</p>
 
 <Drawer open={!!selected} title="Карточка аккаунта" onClose={() => (selected = null)}>

@@ -5,6 +5,7 @@
   import PageHeader from '../components/PageHeader.svelte';
   import Metric from '../components/Metric.svelte';
   import StatusPill from '../components/StatusPill.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
   import { reveal } from '../lib/anim.js';
 
   let data = $state(null);
@@ -54,6 +55,12 @@
 <PageHeader title="Прокси" description="Загрузка, проверка на живость и пул рабочих прокси." />
 
 {#if error}<div class="alert error">{error}</div>{/if}
+
+{#if !data && !error}
+  <Skeleton kind="metrics" />
+  <Skeleton kind="panels" count={2} />
+{/if}
+{#if data}
 
 {#if job.running}
   <div class="alert">{job.kind === 'recheck' ? 'Перепроверка пула' : 'Проверка новых прокси'}:
@@ -117,3 +124,4 @@
     </table>
   </div>
 </div>
+{/if}

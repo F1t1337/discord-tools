@@ -5,6 +5,7 @@
   import { stopLive } from '../lib/sse.js';
   import PageHeader from '../components/PageHeader.svelte';
   import DetailList from '../components/DetailList.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
   import { reveal } from '../lib/anim.js';
 
   let settings = $state(null);
@@ -52,6 +53,8 @@
 <PageHeader title="Настройки" description="Параметры доступа и текущая конфигурация сервера." />
 
 {#if error}<div class="alert error">{error}</div>{/if}
+
+{#if !settings && !error}<Skeleton kind="panels" count={4} />{/if}
 
 {#if settings}
   <div class="settings-grid">

@@ -4,6 +4,7 @@
   import { number, date } from '../lib/format.js';
   import PageHeader from '../components/PageHeader.svelte';
   import DetailList from '../components/DetailList.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
   import { reveal } from '../lib/anim.js';
 
   let data = $state(null);
@@ -41,6 +42,8 @@
 
 {#if error}<div class="alert error">{error}</div>{/if}
 
+{#if !data && !error}<Skeleton kind="panels" count={2} />{/if}
+
 {#if data}
   <div class="alert" role="status">{advice}</div>
 
@@ -48,25 +51,25 @@
     <article class="panel" use:reveal={0}>
       <div class="panel-heading"><div><p class="section-label">Лимиты</p><h2>Ответы Discord</h2></div></div>
       <DetailList pairs={[
-        ['Запросов за 1 / 5 минут', number(m.requests) + ' / ' + number(f.requests)],
-        ['429 за 1 / 5 минут', number(m.rate_limits) + ' / ' + number(f.rate_limits)],
-        ['Доля 429 за 5 минут', number(f.rate_limit_percent) + '%'],
-        ['Заданные ожидания за 5 минут', number(f.retry_after_seconds) + ' с'],
-        ['Аккаунтов с 429', number(f.accounts_limited)],
-        ['Сетевых ошибок за 5 минут', number(f.network_errors)],
-        ['Ответов 401/403 за 5 минут', number(f.forbidden)],
-        ['Очистка: запросов / 429 за 5 минут', number(c.requests) + ' / ' + number(c.rate_limits)],
+        ['Запросов за 1 / 5 минут', number(m.requests) + ' / ' + number(f.requests), 'Число HTTP-запросов к Discord за последнюю минуту и 5 минут.'],
+        ['429 за 1 / 5 минут', number(m.rate_limits) + ' / ' + number(f.rate_limits), '429 — ответ Discord «слишком много запросов» (rate limit).'],
+        ['Доля 429 за 5 минут', number(f.rate_limit_percent) + '%', 'Процент запросов, получивших 429, за 5 минут. Высокое значение — надо снизить потоки.'],
+        ['Заданные ожидания за 5 минут', number(f.retry_after_seconds) + ' с', 'Сумма retry_after — сколько Discord просил подождать. Это не простой всей системы.'],
+        ['Аккаунтов с 429', number(f.accounts_limited), 'Сколько разных аккаунтов упёрлись в лимит за 5 минут.'],
+        ['Сетевых ошибок за 5 минут', number(f.network_errors), 'Ошибки соединения и таймауты (не ответы Discord). Часто — проблема прокси.'],
+        ['Ответов 401/403 за 5 минут', number(f.forbidden), '401/403 — недействительный токен или запрет доступа к ресурсу.'],
+        ['Очистка: запросов / 429 за 5 минут', number(c.requests) + ' / ' + number(c.rate_limits), 'Те же метрики, но только для этапа очистки токенов.'],
       ]} />
     </article>
     <article class="panel" use:reveal={1}>
       <div class="panel-heading"><div><p class="section-label">Прокси</p><h2>Пул и закрепления</h2></div></div>
       <DetailList pairs={[
-        ['Прокси обязательны', data.proxy_enabled ? 'Да, прямой выход запрещён' : 'Выключены — запросы заблокированы'],
-        ['Рабочих / свободных', number(data.alive_proxies) + ' / ' + number(data.free_proxies)],
-        ['Закреплено / недоступно', number(data.assigned_proxies) + ' / ' + number(data.unavailable_bindings)],
+        ['Прокси обязательны', data.proxy_enabled ? 'Да, прямой выход запрещён' : 'Выключены — запросы заблокированы', 'Discord-запросы идут только через прокси; прямого выхода нет.'],
+        ['Рабочих / свободных', number(data.alive_proxies) + ' / ' + number(data.free_proxies), 'Живых прокси всего и из них — не занятых закреплением за аккаунтом.'],
+        ['Закреплено / недоступно', number(data.assigned_proxies) + ' / ' + number(data.unavailable_bindings), 'Аккаунтов с закреплённым прокси и из них — с недоступным сейчас.'],
         ['Потоки очистки', number(data.cleaner_workers)],
-        ['Ожидание прокси за минуту', number(m.accounts_waiting_proxy)],
-        ['Время сбора метрик', number(data.uptime_seconds) + ' с'],
+        ['Ожидание прокси за минуту', number(m.accounts_waiting_proxy), 'Аккаунты, ждавшие свободный прокси за последнюю минуту. Добавление потоков тут не поможет.'],
+        ['Время сбора метрик', number(data.uptime_seconds) + ' с', 'Сколько работает процесс — метрики считаются с его запуска.'],
       ]} />
     </article>
   </div>

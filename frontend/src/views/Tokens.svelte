@@ -4,6 +4,7 @@
   import { number, date } from '../lib/format.js';
   import PageHeader from '../components/PageHeader.svelte';
   import Icon from '../components/Icon.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
   import { reveal } from '../lib/anim.js';
 
   let job = $state(null);
@@ -62,7 +63,8 @@
 </PageHeader>
 
 {#if error}<div class="alert error">{error}</div>{/if}
-{#if !workerRunning}
+{#if !job && !error}<Skeleton kind="panels" count={2} />{/if}
+{#if job && !workerRunning}
   <div class="alert warning">Обработка не запущена. Загрузка и новая выгрузка недоступны; сохранённые файлы можно скачать.</div>
 {/if}
 
@@ -75,6 +77,7 @@
     {job.delivery === 'sent' ? 'Файл отправлен в Telegram.' : job.delivery === 'failed' ? 'Telegram не доставил — скачайте ниже.' : ''}</div>
 {/if}
 
+{#if job}
 <div class="settings-grid">
   <article class="panel" use:reveal={0}>
     <div class="panel-heading"><div><p class="section-label">Загрузка</p><h2>Добавить токены</h2></div></div>
@@ -104,3 +107,4 @@
     {/if}
   </article>
 </div>
+{/if}

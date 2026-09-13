@@ -59,6 +59,9 @@ export function toast(message) {
 
 export function tick() { refreshTick.update((n) => n + 1); }
 
+// Состояние задачи покупки — общий стор, чтобы глобальный индикатор был виден на любой вкладке.
+export const purchaseStatus = writable(null);
+
 export const confirmState = writable(null); // {title, text, resolve}
 export function confirmDialog(title, text) {
   return new Promise((resolve) => confirmState.set({ title, text, resolve }));

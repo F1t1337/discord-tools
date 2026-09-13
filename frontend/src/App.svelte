@@ -2,9 +2,10 @@
   import { onMount } from 'svelte';
   import { api, setCsrf, setUnauthorizedHandler } from './lib/api.js';
   import { startLive, stopLive } from './lib/sse.js';
-  import { session, route, liveState, autoLive, currentHash, TITLES, tick } from './lib/store.js';
+  import { session, route, liveState, autoLive, currentHash, TITLES, tick, refreshTick, purchaseStatus } from './lib/store.js';
   import Sidebar from './components/Sidebar.svelte';
   import Toast from './components/Toast.svelte';
+  import TaskBar from './components/TaskBar.svelte';
   import ConfirmDialog from './components/ConfirmDialog.svelte';
   import Login from './views/Login.svelte';
   import Overview from './views/Overview.svelte';
@@ -82,6 +83,13 @@
     const [title] = TITLES[$route] || ['Панель'];
     document.title = title + ' · Discord Tools';
   });
+
+  // Общий опрос задачи покупки — для глобального индикатора (виден на любой вкладке).
+  $effect(() => {
+    $refreshTick;
+    if (!$session.authenticated) { purchaseStatus.set(null); return; }
+    api('/purchase/status').then((s) => purchaseStatus.set(s)).catch(() => {});
+  });
 </script>
 
 {#if !booted}
@@ -96,6 +104,7 @@
   <div class="workspace">
     <Sidebar onLogout={logout} />
     <main class="main" id="main" tabindex="-1">
+      <TaskBar />
       <CurrentView />
       <footer class="page-footer"><span>DISCORD TOOLS</span><span>Данные с вашего сервера</span></footer>
     </main>
