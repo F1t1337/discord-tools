@@ -962,33 +962,38 @@ class TokenPipeline:
                 # Создаем API клиент
                 api = DiscordAPI(proxy_manager, progress_tracker, proxy_info=proxy_info, transport=self.discord_transport)
 
-                # Запускаем очистку
-                process_token(api, purchase['token'], progress_tracker,
-                              close_channels=self.close_channels)
-                if api.request_failed:
-                    self.db.update_token_status(token=purchase['token'], status='validated',
-                                                cleaning_progress='Ожидание после сетевой ошибки или rate limit')
-                    self.validated_queue.put(purchase)
-                    self.validated_queue.task_done()
-                    time.sleep(5)
-                    continue
+                try:
+                    # Запускаем очистку
+                    process_token(api, purchase['token'], progress_tracker,
+                                  close_channels=self.close_channels)
+                    if api.request_failed:
+                        self.db.update_token_status(token=purchase['token'], status='validated',
+                                                    cleaning_progress='Ожидание после сетевой ошибки или rate limit')
+                        self.validated_queue.put(purchase)
+                        self.validated_queue.task_done()
+                        time.sleep(5)
+                        continue
 
-                logger.info(f"✅ [Cleaner] Очистка завершена для {purchase.get('username', 'Unknown')}")
-                
-                # Обновляем статус в БД
-                self.db.update_token_status(
-                    token=purchase['token'],
-                    status='cleaned'
-                )
-                
-                # Обновляем статистику
-                self.db.update_statistics(tokens_cleaned=1)
-                
-                # Отправляем на финальную проверку
-                self.cleaned_queue.put(purchase)
-                
-                self.validated_queue.task_done()
-                
+                    logger.info(f"✅ [Cleaner] Очистка завершена для {purchase.get('username', 'Unknown')}")
+
+                    # Обновляем статус в БД
+                    self.db.update_token_status(
+                        token=purchase['token'],
+                        status='cleaned'
+                    )
+
+                    # Обновляем статистику
+                    self.db.update_statistics(tokens_cleaned=1)
+
+                    # Отправляем на финальную проверку
+                    self.cleaned_queue.put(purchase)
+
+                    self.validated_queue.task_done()
+                finally:
+                    # Возвращаем прокси в пул — его сможет переиспользовать другой аккаунт.
+                    if proxy_manager is not None:
+                        proxy_manager.release(purchase['token'])
+
             except:
                 # Queue пустая - ждем
                 time.sleep(1)

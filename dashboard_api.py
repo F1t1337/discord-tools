@@ -379,21 +379,22 @@ def stream():
 def network_status():
     from modules.cleaner import parse_proxy
     from modules.discord_transport import account_key, proxy_endpoint
-    bindings = db.proxy_bindings()
-    alive = {account_key(parsed['https']): parsed['https']
-             for raw in db.list_alive_proxies() if (parsed := parse_proxy(raw)).get('https')}
-    occupied = {row['proxy_key'] for row in bindings}
+    alive = {parsed['https'] for raw in db.list_alive_proxies() if (parsed := parse_proxy(raw)).get('https')}
+    # Аренды прокси теперь в памяти менеджера: занятые сейчас, освобождаются после обработки.
+    manager = getattr(pipeline, 'proxy_manager', None)
+    leases = manager.leases_snapshot() if manager is not None and hasattr(manager, 'leases_snapshot') else {}
+    occupied = set(leases.values())
     monitor = getattr(getattr(pipeline, 'discord_transport', None), 'monitor', None)
     result = monitor.snapshot() if monitor else {'available': False}
     result.update(proxy_required=True, proxy_enabled=bool(config.get('proxy', {}).get('enabled')),
-                  alive_proxies=len(alive), assigned_proxies=len(bindings),
-                  free_proxies=len(set(alive) - occupied),
-                  unavailable_bindings=sum(row['proxy_key'] not in alive for row in bindings),
+                  alive_proxies=len(alive), assigned_proxies=len(leases),
+                  free_proxies=len(alive - occupied),
+                  unavailable_bindings=sum(url not in alive for url in occupied),
                   cleaner_workers=(pipeline.count_cleaner_workers() if pipeline is not None else 0),
-                  bindings=[{'account': row['account_hash'][:12], 'account_id': row['account_id'],
-                             'proxy': proxy_endpoint(row['proxy_url']),
-                             'proxy_id': row['proxy_key'][:12], 'available': row['proxy_key'] in alive}
-                            for row in bindings[:250]])
+                  bindings=[{'account': key[:12], 'account_id': None,
+                             'proxy': proxy_endpoint(url),
+                             'proxy_id': account_key(url)[:12], 'available': url in alive}
+                            for key, url in list(leases.items())[:250]])
     return jsonify(result)
 
 
@@ -785,17 +786,18 @@ def purchase_start():
         return error('Число потоков очистки должно быть от 1 до 200')
     if pipeline.purchase.is_active():
         return error('Задача покупки уже выполняется', 409)
-    # Сверяем запрос с балансом на стороне сервера, чтобы не купить сверх доступного.
+    # Лёгкая проверка баланса (один запрос) — без долгого перебора выдачи, чтобы запуск
+    # не «висел». Перерасход всё равно исключён: покупка идёт из бюджета внутри задачи,
+    # дешёвые-первыми, и останавливается при нехватке баланса.
     try:
-        estimate = pipeline.estimate_purchase(pmax, chat_min)
+        balance = pipeline.get_lzt_balance()
     except Exception as exc:
-        logger.error('Ошибка проверки перед запуском задачи: %s', type(exc).__name__)
-        return error('Не удалось получить данные с LZT. Попробуйте позже.', 502)
-    affordable = estimate.get('max_affordable') or 0
-    if affordable <= 0:
-        return error('Недостаточно баланса или нет подходящих аккаунтов', 409)
-    if count > affordable:
-        return error(f'Доступно к покупке не больше {affordable} аккаунтов на текущий баланс', 409)
+        logger.error('Ошибка проверки баланса перед запуском задачи: %s', type(exc).__name__)
+        balance = None
+    if balance is None:
+        return error('Не удалось получить баланс LZT. Попробуйте позже.', 502)
+    if balance <= 0:
+        return error('Недостаточно баланса', 409)
     try:
         state = pipeline.start_purchase(pmax, chat_min, count, workers)
     except RuntimeError as exc:

@@ -160,6 +160,11 @@ class DiscordTransport:
         key = account_key(token)
         if not token:
             raise ValueError('Missing account token')
+        # Если аренду прокси держит другой этап (очистка) — не освобождаем её здесь.
+        # Иначе прокси взят на время одного запроса и возвращается в пул в finally.
+        temp_lease = (self.proxy_manager is not None
+                      and hasattr(self.proxy_manager, 'has_lease')
+                      and not self.proxy_manager.has_lease(token))
         with self.monitor.account(key):
             try:
                 for attempt in range(max(1, max_retries)):
@@ -197,3 +202,5 @@ class DiscordTransport:
                     return response
             finally:
                 self.monitor.inactive(key)
+                if temp_lease and self.proxy_manager is not None and hasattr(self.proxy_manager, 'release'):
+                    self.proxy_manager.release(token)

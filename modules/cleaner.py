@@ -304,7 +304,9 @@ class ProxyManager:
     """Пул рабочих прокси.
 
     В основном режиме читает живые прокси из базы данных (их проверяет панель).
-    За каждой записью аккаунта закрепляется уникальный прокси без ротации.
+    Прокси выдаётся аккаунту в аренду на время обработки и возвращается в пул после
+    завершения (release), поэтому его можно переиспользовать. Пока прокси занят —
+    другой аккаунт его не получит (один прокси = один аккаунт одновременно).
     Без базы данных (CLI-режим) прокси загружаются и проверяются из файла.
     """
 
@@ -313,7 +315,7 @@ class ProxyManager:
         self.proxies_file = proxies_file or PROXIES_FILE
         self._lock = threading.Lock()
         self._proxies = []  # список разобранных прокси-словарей
-        self._bindings = {}
+        self._leases = {}   # account_key(token) -> proxy_url (аренда на время обработки)
         if db is not None:
             self.reload()
         else:
@@ -348,29 +350,53 @@ class ProxyManager:
         with self._lock:
             return len(self._proxies)
 
+    def _alive_urls(self) -> List[str]:
+        """Живые прокси-URL из БД (без блокировки — вызывать вне self._lock)."""
+        urls = []
+        for raw in self.db.list_alive_proxies():
+            url = parse_proxy(raw).get('https')
+            if url:
+                urls.append(url)
+        return urls
+
     def acquire(self, token: str) -> Optional[Dict]:
-        """The same account keeps one unique proxy across every processing stage."""
+        """Берёт свободный прокси в аренду для аккаунта на время обработки.
+
+        Если у аккаунта уже есть аренда — возвращает тот же прокси (стабильно в рамках
+        одной операции). Пока прокси занят другим аккаунтом, он недоступен. Если
+        свободных прокси нет — None (аккаунт ждёт). Освобождается через release().
+        """
         key = account_key(token)
-        if self.db is not None:
-            # Read health every time; deleting/rechecking the pool cannot enable direct access.
-            candidates = []
-            for raw in self.db.list_alive_proxies():
-                parsed = parse_proxy(raw)
-                url = parsed.get('https')
-                if url:
-                    candidates.append((account_key(url), url))
-            url = self.db.bind_account_proxy(token, key, candidates)
-        else:
-            with self._lock:
-                url = self._bindings.get(key)
-                if url is None:
-                    used = set(self._bindings.values())
-                    url = next((p['https'] for p in self._proxies if p['https'] not in used), None)
-                    if url is not None:
-                        self._bindings[key] = url
-        if url is None:
-            return None
-        return {'proxies': {'http': url, 'https': url}}
+        # Чтение живых прокси из БД делаем вне блокировки, назначение — под ней.
+        alive = self._alive_urls() if self.db is not None else None
+        with self._lock:
+            if alive is None:
+                alive = [p['https'] for p in self._proxies if p.get('https')]
+            existing = self._leases.get(key)
+            if existing is not None:
+                if existing in alive:
+                    return {'proxies': {'http': existing, 'https': existing}}
+                self._leases.pop(key, None)  # арендованный прокси умер — берём другой
+            used = set(self._leases.values())
+            url = next((u for u in alive if u not in used), None)
+            if url is None:
+                return None
+            self._leases[key] = url
+            return {'proxies': {'http': url, 'https': url}}
+
+    def has_lease(self, token: str) -> bool:
+        with self._lock:
+            return account_key(token) in self._leases
+
+    def release(self, token: str):
+        """Возвращает прокси аккаунта в пул для повторного использования."""
+        with self._lock:
+            self._leases.pop(account_key(token), None)
+
+    def leases_snapshot(self) -> Dict[str, str]:
+        """Снимок текущих аренд: account_key(token) -> proxy_url."""
+        with self._lock:
+            return dict(self._leases)
 
 
 

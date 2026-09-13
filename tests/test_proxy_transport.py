@@ -71,7 +71,7 @@ class ProxyTransportTests(unittest.TestCase):
         with ThreadPoolExecutor(max_workers=8) as pool:
             results = list(pool.map(self.manager.acquire, [str(n) for n in range(8)]))
         self.assertEqual(sum(item is not None for item in results), 1)
-        self.assertEqual(len(self.db.proxy_bindings()), 1)
+        self.assertEqual(len(self.manager.leases_snapshot()), 1)
 
     def test_proxy_aliases_do_not_create_extra_capacity(self):
         self.add_proxy('LOCALHOST:18080')
@@ -79,16 +79,24 @@ class ProxyTransportTests(unittest.TestCase):
         self.assertIsNotNone(self.manager.acquire(self.token))
         self.assertIsNone(self.manager.acquire(self.other))
 
-    def test_dead_or_deleted_proxy_never_rotates(self):
+    def test_dead_lease_rotates_to_alive_and_blocks_without_pool(self):
+        # Аренда — не вечная привязка: умерший прокси заменяется живым, при пустом
+        # пуле аккаунт ждёт (None). Прокси возвращается в пул через release().
         raw = self.add_proxy()
         assigned = self.manager.acquire(self.token)
+        self.assertIsNotNone(assigned)
         self.add_proxy('127.0.0.1:18081')
-        self.db.set_proxy_result(raw, False)
+        self.db.set_proxy_result(raw, False)  # арендованный прокси умер
+        rotated = self.manager.acquire(self.token)
+        self.assertIsNotNone(rotated)
+        self.assertNotEqual(rotated, assigned)  # выдан другой живой прокси
+        self.db.set_proxy_result('127.0.0.1:18081', False)  # живых больше нет
         self.assertIsNone(self.manager.acquire(self.token))
-        self.db.delete_proxies('dead')
-        self.assertIsNone(self.manager.acquire(self.token))
-        self.add_proxy(raw)
-        self.assertEqual(self.manager.acquire(self.token), assigned)
+        # После release прокси свободен для повторного использования другим аккаунтом.
+        self.db.set_proxy_result('127.0.0.1:18081', True)
+        first = self.manager.acquire(self.token)
+        self.manager.release(self.token)
+        self.assertEqual(self.manager.acquire(self.other), first)
 
     def test_every_attempt_explicitly_uses_proxy_ignoring_environment(self):
         self.add_proxy()
@@ -112,7 +120,7 @@ class ProxyTransportTests(unittest.TestCase):
                 self.transport.request(self.token, 'GET', self.url, max_retries=2)
         self.assertEqual(send.call_count, 2)
         self.assertEqual(send.call_args_list[0].kwargs['proxies'], send.call_args_list[1].kwargs['proxies'])
-        self.assertEqual(len(self.db.proxy_bindings()), 1)
+        self.assertTrue(send.call_args_list[0].kwargs['proxies'].get('https'))  # только через прокси
 
     def test_429_obeys_retry_after_and_records_last_attempt(self):
         self.add_proxy()
@@ -235,6 +243,10 @@ class ProxyTransportTests(unittest.TestCase):
             self.addCleanup(server.server_close)
             self.addCleanup(server.shutdown)
             self.add_proxy(f'127.0.0.1:{server.server_address[1]}')
+        # Два аккаунта обрабатываются одновременно — держим их аренды параллельно,
+        # поэтому им достаются РАЗНЫЕ прокси (одновременно один прокси не делится).
+        self.manager.acquire(self.token)
+        self.manager.acquire(self.other)
         real_session = requests.sessions.Session
         def session_factory():
             session = real_session()

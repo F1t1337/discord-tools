@@ -382,18 +382,26 @@ class ReviewChecks(unittest.TestCase):
         self.assertEqual(self.client.get('/api/purchase/estimate?pmax=abc&chat_min=60',
                                          headers=self.headers).status_code, 400)
 
-    def test_purchase_start_rejects_over_balance(self):
-        self.pipe.estimate_purchase = Mock(return_value={'max_affordable': 2})
+    def test_purchase_start_checks_balance_cheaply(self):
+        # Запуск не делает долгую оценку выдачи: только лёгкая проверка баланса.
+        # Перерасход исключён самой задачей (покупка из бюджета), поэтому count больше
+        # доступного не отклоняется — задача докупит сколько получится.
         self.pipe.purchase = SimpleNamespace(is_active=lambda: False)
         self.pipe.start_purchase = Mock(return_value={'status': 'running'})
-        over = self.client.post('/api/purchase/start',
+        self.pipe.get_lzt_balance = Mock(return_value=None)
+        no_balance = self.client.post('/api/purchase/start',
             json={'pmax': 80, 'chat_min': 60, 'count': 5, 'cleaner_workers': 10}, headers=self.headers)
-        self.assertEqual(over.status_code, 409)
+        self.assertEqual(no_balance.status_code, 502)
         self.pipe.start_purchase.assert_not_called()
+        self.pipe.get_lzt_balance = Mock(return_value=0)
+        zero = self.client.post('/api/purchase/start',
+            json={'pmax': 80, 'chat_min': 60, 'count': 1, 'cleaner_workers': 10}, headers=self.headers)
+        self.assertEqual(zero.status_code, 409)
+        self.pipe.get_lzt_balance = Mock(return_value=1000)
         ok = self.client.post('/api/purchase/start',
-            json={'pmax': 80, 'chat_min': 60, 'count': 2, 'cleaner_workers': 10}, headers=self.headers)
+            json={'pmax': 80, 'chat_min': 60, 'count': 5, 'cleaner_workers': 10}, headers=self.headers)
         self.assertEqual(ok.status_code, 202)
-        self.pipe.start_purchase.assert_called_once_with(80.0, 60, 2, 10)
+        self.pipe.start_purchase.assert_called_once_with(80.0, 60, 5, 10)
 
     def test_atomic_export_only_claims_each_record_once(self):
         self.ready('synthetic-record-A')
@@ -512,6 +520,7 @@ class ReviewChecks(unittest.TestCase):
         self.pipe.db.upsert_proxy_result(raw, True, 1)
         manager = ProxyManager(db=self.pipe.db)
         manager.acquire('synthetic-record-A')
+        self.pipe.proxy_manager = manager
         self.pipe.discord_transport = DiscordTransport(manager)
         self.pipe.count_cleaner_workers = Mock(return_value=3)
         result = self.client.get('/api/network')

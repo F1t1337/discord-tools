@@ -19,8 +19,10 @@ logger = logging.getLogger(__name__)
 class PurchaseTaskManager:
     # Ограничение на число страниц выдачи при оценке (защита от лишних запросов).
     MAX_ESTIMATE_PAGES = 20
-    # Пауза между покупками, чтобы не упереться в лимиты маркета.
+    # Пауза между покупками у одного воркера, чтобы не упереться в лимиты маркета.
     BUY_DELAY = 0.3
+    # Сколько аккаунтов покупать параллельно.
+    BUY_WORKERS = 4
 
     def __init__(self, lzt_monitor, db, intake_cb, set_cleaner_workers_cb=None):
         """
@@ -147,92 +149,148 @@ class PurchaseTaskManager:
         self._stop.set()
         return True
 
-    # ---------- рабочий поток ----------
+    # ---------- рабочие потоки покупки (параллельно) ----------
 
-    def _affordable(self, price: float) -> bool:
-        """Проверяет, что покупка не превысит баланс; при нехватке обновляет баланс."""
-        with self._lock:
-            balance = self._state['balance']
-            spent = self._state['spent']
-        if balance is None:
-            return True  # баланс неизвестен — не блокируем (LZT сам отклонит при нехватке)
-        if spent + price <= balance:
-            return True
-        fresh = self.lzt.get_balance()
-        if fresh is None:
-            return False
-        self._set(balance=fresh)
-        return spent + price <= fresh
-
-    def _run(self):
-        pmax = self._get('pmax')
-        chat_min = self._get('chat_min')
-        requested = self._get('requested')
-        seen = set()
-        page = 1
-        try:
-            while not self._stop.is_set() and self._get('bought') < requested:
-                items, total = self.lzt.search_accounts(pmax, chat_min, page=page)
+    def _next_candidate(self):
+        """Возвращает следующий (item_id, price) из выдачи LZT или None, если больше нет.
+        Потокобезопасно; страницы подгружаются по мере необходимости."""
+        with self._supply_lock:
+            while not self._stop.is_set():
+                if self._buffer:
+                    return self._buffer.pop(0)
+                if self._supply_done:
+                    return None
+                items, total = self.lzt.search_accounts(self._pmax, self._chat_min, page=self._page)
+                self._page += 1
                 if not items:
-                    break
+                    self._supply_done = True
+                    return None
                 for item in items:
-                    if self._stop.is_set() or self._get('bought') >= requested:
-                        break
                     item_id = item.get('item_id')
-                    if item_id is None or item_id in seen:
+                    if item_id is None or item_id in self._seen:
                         continue
-                    seen.add(item_id)
+                    self._seen.add(item_id)
                     try:
                         price = float(item.get('price') or 0)
                     except (TypeError, ValueError):
                         continue
-                    if price <= 0 or price > pmax:
+                    if price <= 0 or price > self._pmax:
                         continue
-                    if not self._affordable(price):
-                        self._set(message='Недостаточно баланса для следующей покупки')
-                        self._stop.set()
-                        break
+                    self._buffer.append((item_id, price))
+                if total and len(self._seen) >= total:
+                    self._supply_done = True
+            return None
 
-                    self._bump(checked=1)
-                    try:
-                        token, raw = self.lzt.fast_buy(item_id, price)
-                    except PurchaseError as exc:
-                        if exc.purchased:
-                            Finance(self.db).record_purchase(self._get('purchase_id'), item_id, price)
-                            self._bump(bought=1, spent=price, errors=1)
-                            continue
-                        if exc.out_of_balance:
-                            self._set(message='Недостаточно баланса для покупки')
-                            self._stop.set()
-                            break
-                        self._bump(skipped_dead=1)
-                        continue
-                    except Exception:
-                        self._bump(errors=1)
-                        continue
+    def _return_candidate(self, candidate):
+        with self._supply_lock:
+            self._buffer.insert(0, candidate)
 
-                    seller = ''
-                    if isinstance(raw, dict) and isinstance(raw.get('seller'), dict):
-                        seller = raw['seller'].get('username', '')
-                    # The expense exists even if intake or cleaning subsequently fails.
+    def _reserve(self, price: float) -> str:
+        """Резервирует слот и бюджет под покупку. 'ok' | 'enough' | 'budget'."""
+        with self._lock:
+            requested = self._state['requested']
+            if self._state['bought'] + self._in_flight >= requested:
+                return 'enough'
+            balance = self._state['balance']
+            if balance is not None and (self._state['spent'] + self._reserved + price) > balance:
+                return 'budget'
+            self._in_flight += 1
+            self._reserved += price
+            return 'ok'
+
+    def _finish_reservation(self, price: float, bought: bool):
+        with self._lock:
+            self._in_flight -= 1
+            self._reserved -= price
+            if bought:
+                self._state['bought'] += 1
+                self._state['spent'] = round(self._state['spent'] + price, 2)
+                self._state['message'] = f"Куплено {self._state['bought']} из {self._state['requested']}"
+
+    def _buy_worker(self):
+        while not self._stop.is_set():
+            if self._get('bought') >= self._get('requested'):
+                break
+            candidate = self._next_candidate()
+            if candidate is None:
+                break  # выдача закончилась
+            item_id, price = candidate
+
+            reservation = self._reserve(price)
+            if reservation == 'enough':
+                self._return_candidate(candidate)
+                if self._get('bought') >= self._get('requested'):
+                    break
+                time.sleep(0.15)  # ждём: вдруг in-flight отбракуется и освободит слот
+                continue
+            if reservation == 'budget':
+                fresh = self.lzt.get_balance()
+                if fresh is not None and fresh != self._get('balance'):
+                    self._set(balance=fresh)
+                    reservation = self._reserve(price)
+                if reservation != 'ok':
+                    self._return_candidate(candidate)
+                    self._set(message='Недостаточно баланса для покупки')
+                    self._stop.set()
+                    break
+
+            # reservation == 'ok' — покупаем
+            self._bump(checked=1)
+            try:
+                token, raw = self.lzt.fast_buy(item_id, price)
+            except PurchaseError as exc:
+                if exc.purchased:
                     Finance(self.db).record_purchase(self._get('purchase_id'), item_id, price)
-                    with self._lock:
-                        self._state['bought'] += 1
-                        self._state['spent'] = round(self._state['spent'] + price, 2)
-                        self._state['message'] = f"Куплено {self._state['bought']} из {requested}"
-                    try:
-                        self.intake_cb(token=token, item_id=item_id, price=price,
-                                       seller_username=seller or 'lzt_market', purchase_id=self._get('purchase_id'))
-                    except Exception:
-                        logger.error('Не удалось поставить купленный токен в обработку')
-                        self._bump(errors=1)
-                        continue
-
+                    self._finish_reservation(price, bought=True)
+                    self._bump(errors=1)
                     time.sleep(self.BUY_DELAY)
+                    continue
+                self._finish_reservation(price, bought=False)
+                if exc.out_of_balance:
+                    self._set(message='Недостаточно баланса для покупки')
+                    self._stop.set()
+                    break
+                self._bump(skipped_dead=1)
+                time.sleep(self.BUY_DELAY)
+                continue
+            except Exception:
+                self._finish_reservation(price, bought=False)
+                self._bump(errors=1)
+                time.sleep(self.BUY_DELAY)
+                continue
 
-                page += 1
-                if total and len(seen) >= total:
-                    break  # перебрали всю выдачу
+            seller = ''
+            if isinstance(raw, dict) and isinstance(raw.get('seller'), dict):
+                seller = raw['seller'].get('username', '')
+            # The expense exists even if intake or cleaning subsequently fails.
+            Finance(self.db).record_purchase(self._get('purchase_id'), item_id, price)
+            self._finish_reservation(price, bought=True)
+            try:
+                self.intake_cb(token=token, item_id=item_id, price=price,
+                               seller_username=seller or 'lzt_market', purchase_id=self._get('purchase_id'))
+            except Exception:
+                logger.error('Не удалось поставить купленный токен в обработку')
+                self._bump(errors=1)
+            time.sleep(self.BUY_DELAY)
+
+    def _run(self):
+        # Подготовка общей выдачи и счётчиков резервирования.
+        self._pmax = self._get('pmax')
+        self._chat_min = self._get('chat_min')
+        self._buffer = []
+        self._page = 1
+        self._supply_done = False
+        self._seen = set()
+        self._in_flight = 0
+        self._reserved = 0.0
+        self._supply_lock = threading.Lock()
+        try:
+            workers = [threading.Thread(target=self._buy_worker, name=f'PurchaseBuy-{i + 1}', daemon=True)
+                       for i in range(self.BUY_WORKERS)]
+            for worker in workers:
+                worker.start()
+            for worker in workers:
+                worker.join()
         except Exception as exc:
             logger.error('Ошибка задачи покупки: %s', type(exc).__name__)
             self._set(error=type(exc).__name__)

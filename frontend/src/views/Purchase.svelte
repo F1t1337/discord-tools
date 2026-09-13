@@ -13,6 +13,7 @@
   let chatMin = $state(60);
   let estimate = $state(null);
   let estimating = $state(false);
+  let starting = $state(false);
   let count = $state(null);
   let workers = $state(20);
 
@@ -63,11 +64,13 @@
       'Будет куплено до ' + number(count) + ' аккаунтов, максимум ' + money(pmax * count)
       + ' (по ' + money(pmax) + ' за шт.). Тратятся реальные деньги.');
     if (!ok) return;
+    starting = true;
     try {
       await api('/purchase/start', { method: 'POST',
         body: JSON.stringify({ pmax: Number(pmax), chat_min: Number(chatMin), count: Number(count), cleaner_workers: Number(workers) }) });
       toast('Задача запущена'); tick();
     } catch (e) { toast(e.message); }
+    finally { starting = false; }
   }
 
   async function stop() {
@@ -146,10 +149,11 @@
           <input id="count" type="number" min="1" max={estimate.max_affordable || 1} step="1" bind:value={count}></div>
         <div class="field"><label for="workers">Потоки очистки</label>
           <input id="workers" type="number" min="1" max="200" step="1" bind:value={workers}></div>
-        <button class="button primary" onclick={start} disabled={running || !workerReady || !(estimate.max_affordable > 0)}>
-          <Icon name="play" size={16} /> Запустить задачу
+        <button class="button primary" onclick={start} disabled={starting || running || !workerReady || !(estimate.max_affordable > 0)}>
+          <Icon name="play" size={16} /> {starting ? 'Запускается…' : 'Запустить задачу'}
         </button>
       </div>
+      {#if starting}<p class="muted">Задача принята: проверяем баланс и запускаем покупку…</p>{/if}
     </section>
   {/if}
 
