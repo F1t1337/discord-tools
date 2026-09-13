@@ -2,6 +2,7 @@ import sqlite3
 import logging
 import threading
 import time
+import json
 from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime, date
@@ -9,7 +10,7 @@ from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 _SCHEMA_LOCK = threading.RLock()
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 class Database:
@@ -169,6 +170,16 @@ class Database:
                 proxy_key TEXT NOT NULL UNIQUE,
                 proxy_url TEXT NOT NULL,
                 created_at REAL NOT NULL
+            )''')
+            cursor.execute('''CREATE TABLE IF NOT EXISTS tskupka_tasks (
+                export_id INTEGER PRIMARY KEY,
+                task_id INTEGER UNIQUE,
+                state TEXT NOT NULL,
+                remote_status TEXT,
+                summary TEXT NOT NULL DEFAULT '{}',
+                error TEXT,
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL
             )''')
 
             # Additive migration preserves IDs, statuses and existing rows.
@@ -445,7 +456,7 @@ class Database:
         return {'export_id': batch_id, 'valid_tokens': saved, 'invalid': invalid_count}
 
     def set_export_delivery(self, batch_id, delivery):
-        if delivery not in {'sent', 'failed'}:
+        if delivery not in {'sent', 'failed', 'not_requested'}:
             raise ValueError('Invalid delivery state')
         with self.get_connection() as conn:
             conn.execute('UPDATE export_batches SET delivery=? WHERE id=?', (delivery, batch_id))
@@ -464,6 +475,40 @@ class Database:
                 batch_id = row[0]
             return [row['token'] for row in conn.execute(
                 'SELECT token FROM export_items WHERE batch_id=? ORDER BY rowid', (batch_id,))]
+
+    def claim_tskupka_export(self, export_id):
+        """Reserve before HTTP; an uncertain result must never be auto-resubmitted."""
+        with self.get_connection() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            if not conn.execute('SELECT 1 FROM export_items WHERE batch_id=? LIMIT 1', (export_id,)).fetchone():
+                raise ValueError('Export not found')
+            row = conn.execute('SELECT state FROM tskupka_tasks WHERE export_id=?', (export_id,)).fetchone()
+            if row and row['state'] != 'rejected':
+                return False
+            now = time.time()
+            conn.execute('''INSERT INTO tskupka_tasks(export_id, state, created_at, updated_at)
+                VALUES (?, 'sending', ?, ?) ON CONFLICT(export_id) DO UPDATE SET
+                state='sending', error=NULL, updated_at=excluded.updated_at''', (export_id, now, now))
+            return True
+
+    def save_tskupka_task(self, export_id, state, task_id=None, remote_status=None, summary=None, error=None):
+        with self.get_connection() as conn:
+            conn.execute('''UPDATE tskupka_tasks SET state=?, task_id=COALESCE(?, task_id),
+                remote_status=COALESCE(?, remote_status), summary=COALESCE(?, summary),
+                error=?, updated_at=? WHERE export_id=?''',
+                (state, task_id, remote_status, json.dumps(summary) if summary is not None else None,
+                 error, time.time(), export_id))
+
+    def get_tskupka_tasks(self):
+        with self.get_connection() as conn:
+            rows = conn.execute('''SELECT t.* FROM tskupka_tasks t JOIN
+                (SELECT id FROM export_batches ORDER BY id DESC LIMIT 100) b ON b.id=t.export_id''').fetchall()
+            return {row['export_id']: {**dict(row), 'summary': json.loads(row['summary'])} for row in rows}
+
+    def get_tskupka_task(self, export_id):
+        with self.get_connection() as conn:
+            row = conn.execute('SELECT * FROM tskupka_tasks WHERE export_id=?', (export_id,)).fetchone()
+            return {**dict(row), 'summary': json.loads(row['summary'])} if row else None
 
     def bind_account_proxy(self, token, account_hash, candidates):
         """Reserve a unique proxy permanently; an unavailable binding never rotates."""

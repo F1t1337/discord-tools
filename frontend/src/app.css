@@ -474,6 +474,8 @@ dialog form>p{margin-top:12px}
 .cta-alert .button{flex-shrink:0}
 
 /* Подсказки «?» */
+.export-history-item{flex-direction:column;align-items:stretch;gap:12px}
+.export-history-item .header-actions{flex-wrap:wrap}
 .hint{position:relative;display:inline-flex;vertical-align:middle;cursor:help;border:0;padding:0;background:transparent;font:inherit}
 .hint-mark{display:grid;place-items:center;width:15px;height:15px;border-radius:50%;border:1px solid var(--line-2);color:var(--muted);font-size:.625rem;font-weight:700;line-height:1}
 .hint:hover .hint-mark,.hint:focus .hint-mark{border-color:var(--accent);color:var(--accent)}

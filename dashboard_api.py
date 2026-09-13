@@ -21,6 +21,7 @@ from werkzeug.security import check_password_hash
 from modules.access_control import dashboard_settings, telegram_owner_ids
 from modules.configuration import PROJECT_ROOT, load_config, load_env_file, save_config_value
 from modules.database import Database
+from modules.tskupka import TskupkaService, TskupkaError
 
 logger = logging.getLogger(__name__)
 ASSETS = PROJECT_ROOT / 'dashboard'
@@ -29,6 +30,7 @@ pipeline = None
 config = None
 config_path = PROJECT_ROOT / 'config.json'
 db = None
+tskupka = None
 settings = None
 started_at = time.time()
 stop_requested = False
@@ -55,7 +57,7 @@ export_job = {'running': False, 'total': 0, 'done': 0, 'valid': 0, 'invalid': 0,
 
 
 def init_dashboard(pipeline_instance, config_dict, config_file=None):
-    global pipeline, config, config_path, db, settings, started_at, stop_requested
+    global pipeline, config, config_path, db, settings, started_at, stop_requested, tskupka
     settings = dashboard_settings(config_dict)
     pipeline, config = pipeline_instance, config_dict
     config_path = Path(config_file or getattr(pipeline, 'config_path', None)
@@ -72,6 +74,7 @@ def init_dashboard(pipeline_instance, config_dict, config_file=None):
         TRUSTED_HOSTS=[f"[{settings['hostname']}]" if ':' in settings['hostname'] else settings['hostname']],
     )
     db = pipeline.db if pipeline is not None else Database(config['database']['path'])
+    tskupka = TskupkaService(db, os.environ.get('TSKUPKA_API_KEY', ''))
     started_at, stop_requested = time.time(), False
     with state_lock:
         auth_sessions.clear()
@@ -82,7 +85,7 @@ def init_dashboard(pipeline_instance, config_dict, config_file=None):
     with export_job_lock:
         export_job.update(running=False, total=0, done=0, valid=0, invalid=0,
                           started_at=None, finished_at=None, error=None, available=False,
-                          deferred=0, delivery=None, export_id=None)
+                          deferred=0, delivery=None, export_id=None, destination='telegram')
     logger.info('Защищённая панель инициализирована')
 
 
@@ -845,7 +848,9 @@ def upload_tokens():
 
 
 @app.post('/api/tokens/export')
-def export_tokens():
+def export_tokens(destination='telegram'):
+    if destination == 'tskupka' and not tskupka.configured:
+        return error('На сервере не задан TSKUPKA_API_KEY', 503)
     if pipeline is None or not pipeline.running or stop_requested:
         return error('Выгрузка доступна только при запущенной обработке', 503)
     with export_job_lock:
@@ -855,18 +860,20 @@ def export_tokens():
             return error('Выгрузка уже выполняется, дождитесь завершения', 409)
         export_job.update(running=True, total=0, done=0, valid=0, invalid=0,
                           started_at=time.time(), finished_at=None, error=None, available=False,
-                          deferred=0, delivery=None, export_id=None)
+                          deferred=0, delivery=None, export_id=None, destination=destination)
 
     def worker():
         def progress(done, total, valid, invalid):
             with export_job_lock:
                 export_job.update(done=done, total=total, valid=valid, invalid=invalid)
         try:
-            result = pipeline.export_ready_tokens(progress_cb=progress)
+            result = pipeline.export_ready_tokens(progress_cb=progress, send_telegram=destination != 'tskupka')
             with export_job_lock:
                 export_job.update(total=result['total'], valid=len(result['valid_tokens']),
                                   invalid=result['invalid'], deferred=result['deferred'],
                                   delivery=result['delivery'], export_id=result['export_id'])
+            if destination == 'tskupka' and result['export_id'] is not None:
+                tskupka.submit(result['export_id'])
         except Exception as exc:
             with export_job_lock:
                 export_job['error'] = type(exc).__name__
@@ -885,14 +892,56 @@ def export_tokens():
     return jsonify(success=True), 202
 
 
+@app.post('/api/tokens/export/tskupka')
+def export_ready_to_tskupka():
+    return export_tokens(destination='tskupka')
+
+
 @app.get('/api/tokens/export/status')
 def export_status():
     with export_job_lock:
         result = dict(export_job)
     history = db.list_exports()
-    result.update(available=bool(history), history=history,
+    tasks = db.get_tskupka_tasks()
+    for item in history:
+        item['tskupka'] = tasks.get(item['id'])
+    result.update(available=bool(history), history=history, tskupka_configured=tskupka.configured,
                   worker_running=bool(pipeline is not None and pipeline.running and not stop_requested))
     return jsonify(result)
+
+
+@app.post('/api/tokens/export/<int:export_id>/tskupka')
+def send_export_tskupka(export_id):
+    if not 0 < export_id <= 2**63 - 1:
+        return error('Неверный номер выгрузки')
+    if not tskupka.configured:
+        return error('На сервере не задан TSKUPKA_API_KEY', 503)
+    try:
+        task = tskupka.submit(export_id)
+    except ValueError:
+        return error('Выгрузка не найдена', 404)
+    except RuntimeError as exc:
+        return error(str(exc), 409)
+    except TskupkaError as exc:
+        return error(str(exc), 502)
+    return jsonify(success=True, task=task)
+
+
+@app.post('/api/tokens/export/<int:export_id>/tskupka/refresh')
+def refresh_export_tskupka(export_id):
+    if not 0 < export_id <= 2**63 - 1:
+        return error('Неверный номер выгрузки')
+    if not tskupka.configured:
+        return error('На сервере не задан TSKUPKA_API_KEY', 503)
+    try:
+        task = tskupka.refresh(export_id)
+    except ValueError:
+        return error('ID задачи Tskupka не найден', 404)
+    except RuntimeError as exc:
+        return error(str(exc), 409)
+    except TskupkaError as exc:
+        return error(str(exc), 502)
+    return jsonify(success=True, task=task)
 
 
 @app.get('/api/tokens/export/download')

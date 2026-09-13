@@ -2,7 +2,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { mount, unmount } from 'svelte';
 import App from '../src/App.svelte';
 import Tokens from '../src/views/Tokens.svelte';
-import { refreshTick, session } from '../src/lib/store.js';
+import { refreshTick, session, confirmState } from '../src/lib/store.js';
+import { get } from 'svelte/store';
 
 let component;
 afterEach(async () => {
@@ -10,7 +11,34 @@ afterEach(async () => {
   component = null;
   document.body.innerHTML = '';
   session.set({ authenticated: false });
+  confirmState.set(null);
   vi.unstubAllGlobals();
+});
+
+it('offers two export buttons and sends to Tskupka without a confirmation dialog', async () => {
+  const fetch = vi.fn().mockImplementation((url) => Promise.resolve(Response.json(
+    url === '/api/tokens/export/status'
+      ? { worker_running: true, running: false, tskupka_configured: true, history: [] }
+      : { success: true }, { status: url === '/api/tokens/export/tskupka' ? 202 : 200 })));
+  vi.stubGlobal('fetch', fetch);
+  component = mount(Tokens, { target: document.body });
+  const find = (text) => [...document.querySelectorAll('button')].find((b) => b.textContent.includes(text));
+  await vi.waitFor(() => expect(find('Выгрузить в Tskupka').disabled).toBe(false));
+  expect(find('Обычная выгрузка').disabled).toBe(false);
+  find('Выгрузить в Tskupka').click();
+  await vi.waitFor(() => expect(fetch.mock.calls.some(([url]) => url === '/api/tokens/export/tskupka')).toBe(true));
+  expect(get(confirmState)).toBeNull();
+  expect(fetch.mock.calls.some(([url]) => url === '/api/tokens/export')).toBe(false);
+});
+
+it('blocks Tskupka without a key while ordinary export remains available', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({
+    worker_running: true, running: false, tskupka_configured: false, history: [],
+  })));
+  component = mount(Tokens, { target: document.body });
+  const find = (text) => [...document.querySelectorAll('button')].find((b) => b.textContent.includes(text));
+  await vi.waitFor(() => expect(find('Обычная выгрузка').disabled).toBe(false));
+  expect(find('Выгрузить в Tskupka').disabled).toBe(true);
 });
 
 it('keeps startup failure visible and allows retry without reloading', async () => {
@@ -34,7 +62,8 @@ it('disables intake for a stopped worker but keeps failed deliveries downloadabl
   component = mount(Tokens, { target: document.body });
   await vi.waitFor(() => expect(document.body.textContent).toContain('Telegram: ошибка'));
   const button = (text) => [...document.querySelectorAll('button')].find((b) => b.textContent.includes(text));
-  expect(button('Выгрузить готовые').disabled).toBe(true);
+  expect(button('Обычная выгрузка').disabled).toBe(true);
+  expect(button('Выгрузить в Tskupka').disabled).toBe(true);
   expect(button('Загрузить в обработку').disabled).toBe(true);
   expect(button('.txt').disabled).toBe(false);
 });

@@ -71,7 +71,7 @@ class ReviewChecks(unittest.TestCase):
         self.pipe.db.add_token(token)
         self.pipe.db.update_token_status(token, 'ready')
 
-    def export(self):
+    def export(self, destination='telegram'):
         # Execute the real route worker synchronously; no workers or network start.
         class ImmediateThread:
             def __init__(self, target, **kwargs):
@@ -79,9 +79,48 @@ class ReviewChecks(unittest.TestCase):
             def start(self):
                 self.target()
         with patch.object(api.threading, 'Thread', ImmediateThread), patch('core.pipeline.time.sleep'):
-            response = self.client.post('/api/tokens/export', json={}, headers=self.headers)
+            response = self.client.post('/api/tokens/export' + ('/tskupka' if destination == 'tskupka' else ''), json={}, headers=self.headers)
         self.assertEqual(response.status_code, 202)
         return self.client.get('/api/tokens/export/status').json
+
+    def test_ready_export_to_tskupka_skips_telegram(self):
+        from modules.tskupka import TskupkaService
+        api.tskupka = TskupkaService(self.pipe.db, 'synthetic-api-key')
+        self.ready('synthetic-record-A')
+        with patch.object(api.tskupka.client, 'create', return_value={'task_id': 91, 'unique_tokens': 1}) as create:
+            job = self.export('tskupka')
+        self.assertIsNone(job['error'])
+        self.assertEqual(job['destination'], 'tskupka')
+        self.assertEqual(job['delivery'], 'not_requested')
+        self.assertEqual(job['history'][0]['tskupka']['task_id'], 91)
+        self.assertEqual(self.client.get('/api/tokens/export/download').data, b'synthetic-record-A\n')
+        create.assert_called_once_with(['synthetic-record-A'])
+        self.pipe.telegram.send_tokens_file.assert_not_called()
+
+    def test_tskupka_failure_preserves_new_export(self):
+        from modules.tskupka import TskupkaService, TskupkaError
+        api.tskupka = TskupkaService(self.pipe.db, 'synthetic-api-key')
+        self.ready('synthetic-record-A')
+        with patch.object(api.tskupka.client, 'create', side_effect=TskupkaError('Timeout')):
+            job = self.export('tskupka')
+        self.assertEqual(job['error'], 'TskupkaError')
+        self.assertEqual(job['history'][0]['tskupka']['state'], 'unknown')
+        self.assertEqual(self.client.get('/api/tokens/export/download').data, b'synthetic-record-A\n')
+        self.pipe.telegram.send_tokens_file.assert_not_called()
+
+    def test_tskupka_empty_export_and_missing_key_never_send(self):
+        from modules.tskupka import TskupkaService
+        api.tskupka = TskupkaService(self.pipe.db, '')
+        route = '/api/tokens/export/tskupka'
+        self.assertEqual(api.app.test_client().post(route).status_code, 401)
+        self.assertEqual(self.client.post(route).status_code, 403)
+        self.assertEqual(self.client.post(route, headers=self.headers).status_code, 503)
+        api.tskupka = TskupkaService(self.pipe.db, 'synthetic-api-key')
+        with patch.object(api.tskupka.client, 'create') as create:
+            job = self.export('tskupka')
+        self.assertIsNone(job['error'])
+        self.assertEqual(job['valid'], 0)
+        create.assert_not_called()
 
     def test_python_syntax(self):
         files = [ROOT / p for p in __import__('subprocess').check_output(
@@ -372,7 +411,7 @@ class ReviewChecks(unittest.TestCase):
             conn.execute('DROP TABLE export_batches')
             conn.execute('PRAGMA user_version=2')
         migrated = Database(self.config['database']['path'])
-        self.assertEqual(migrated.schema_version(), 4)
+        self.assertEqual(migrated.schema_version(), 5)
         self.assertEqual(migrated.get_token_info('synthetic-record-A')['status'], 'ready')
         self.assertEqual(len(list(self.path.glob('test.db.backup_*'))), 1)
         Database(self.config['database']['path'])

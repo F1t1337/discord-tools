@@ -721,7 +721,7 @@ class TokenPipeline:
                 added += 1
         return {'added': added, 'total': len(tokens), 'duplicates': duplicates, 'errors': errors}
 
-    def export_ready_tokens(self, progress_cb=None) -> dict:
+    def export_ready_tokens(self, progress_cb=None, send_telegram=True) -> dict:
         """Save an atomic, durable export before attempting Telegram delivery."""
         if not self._export_lock.acquire(blocking=False):
             raise RuntimeError('Выгрузка уже выполняется')
@@ -745,7 +745,10 @@ class TokenPipeline:
             result = self.db.commit_export(valid_tokens, invalid_tokens)
             result.update(total=total, deferred=deferred, delivery='not_needed')
             self.ready_tokens_notification_sent = False
-            if result['export_id'] is not None:
+            if result['export_id'] is not None and not send_telegram:
+                result['delivery'] = 'not_requested'
+                self.db.set_export_delivery(result['export_id'], 'not_requested')
+            elif result['export_id'] is not None:
                 delivery = 'failed'
                 try:
                     if self.telegram.send_tokens_file(result['valid_tokens']):
