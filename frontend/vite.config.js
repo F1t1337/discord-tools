@@ -6,8 +6,8 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 // именами assets/app.js и assets/app.css, base '/', чтобы ассеты резолвились как /assets/...
 export default defineConfig({
   plugins: [svelte()],
-  // The panel and jsdom component tests both use Svelte's browser runtime.
-  resolve: { conditions: ['browser'] },
+  // Use the browser runtime in jsdom; keep Vite's production conditions intact.
+  resolve: process.env.VITEST ? { conditions: ['browser'] } : undefined,
   base: '/',
   server: { port: 5174 },
   build: {
