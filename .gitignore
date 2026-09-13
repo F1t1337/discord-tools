@@ -28,3 +28,8 @@ tokens.txt
 
 # Writable service configuration
 data/config.json
+
+# Frontend (Svelte + Vite) build tooling. Собранные ассеты dashboard/assets/** коммитятся.
+frontend/node_modules/
+frontend/.vite/
+frontend/dist/

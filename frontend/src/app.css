@@ -375,3 +375,80 @@ dialog form>p{margin-top:12px}
   *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
   .chart-draw{stroke-dashoffset:0}
 }
+
+/* ==================== Новая IA: раскладка, сегменты, drawer, степпер ==================== */
+.nav-section{margin-top:22px}
+.nav-section:first-of-type{margin-top:10px}
+.nav-section>.section-label{margin:0 12px 8px;font-size:.625rem}
+.header-actions .button svg{width:16px;height:16px}
+/* Панель действий экрана: заголовок слева, действия справа (единый паттерн) */
+.action-bar{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+.action-bar-buttons{display:flex;gap:10px;flex-wrap:wrap}
+.live-badge{display:inline-flex;align-items:center;gap:7px;font-size:.75rem;color:var(--muted);padding:6px 11px;border:1px solid var(--line);border-radius:999px;background:var(--glass-2)}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--faint)}
+.live-dot.live{background:var(--mint);box-shadow:0 0 0 0 rgba(74,222,128,.5);animation:pulse 2s infinite}
+.live-dot.polling{background:var(--amber)}
+.live-dot.offline{background:var(--red)}
+
+/* Сегмент-контрол (фильтры/уровни вместо select) */
+.segmented{display:inline-flex;flex-wrap:wrap;gap:4px;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--glass-2)}
+.segmented button{border:0;background:transparent;color:var(--muted);border-radius:8px;padding:7px 13px;font-size:.8125rem;font-weight:520;transition:background .18s,color .18s}
+.segmented button:hover{color:var(--text)}
+.segmented button[aria-pressed=true]{background:var(--accent-soft);color:#cfc7ff}
+
+/* Крупные стат-карточки результата (расчёт покупки) */
+.statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
+.stat{padding:18px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--glass-2)}
+.stat .k{font-size:.75rem;color:var(--muted);margin-bottom:8px}
+.stat .v{font-size:1.7rem;font-weight:640;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.stat.hero{background:linear-gradient(150deg,rgba(124,107,245,.24),var(--glass-2) 62%);border-color:rgba(124,107,245,.34)}
+.stat.hero .v{font-size:2.3rem;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+
+/* Шаги задачи */
+.steps{display:grid;gap:16px}
+.step{position:relative;border:1px solid var(--line);border-radius:var(--radius);background:var(--glass);backdrop-filter:blur(14px);padding:22px 24px 24px}
+.step-head{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.step-num{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;font-size:.8125rem;font-weight:700;background:var(--accent-soft);color:#cfc7ff;flex-shrink:0}
+.step-head h2{font-size:1.05rem}
+
+/* Прогресс-бар */
+.progress{height:10px;border-radius:6px;background:rgba(255,255,255,.06);overflow:hidden}
+.progress>span{display:block;height:100%;background:var(--grad);border-radius:6px;transition:width .5s var(--ease)}
+.progress-label{display:flex;justify-content:space-between;font-size:.8125rem;color:var(--muted);margin-bottom:8px}
+.progress-label b{color:var(--text);font-variant-numeric:tabular-nums}
+
+/* Воронка конвейера */
+.funnel{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+.funnel-step{flex:1;min-width:104px;padding:14px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--glass-2);text-align:center}
+.funnel-step .v{font-size:1.5rem;font-weight:640;font-variant-numeric:tabular-nums}
+.funnel-step .k{font-size:.75rem;color:var(--muted);margin-top:4px}
+.funnel-arrow{align-self:center;color:var(--faint)}
+
+/* Правый drawer вместо центрального диалога */
+.drawer-scrim{position:fixed;inset:0;background:rgba(5,7,11,.6);backdrop-filter:blur(6px);z-index:90;animation:fadeIn .25s var(--ease)}
+.drawer{position:fixed;top:0;right:0;height:100vh;width:min(430px,100%);background:var(--glass);backdrop-filter:blur(24px);border-left:1px solid var(--line-2);z-index:91;padding:26px;overflow:auto;box-shadow:var(--shadow);animation:drawerIn .3s var(--ease)}
+@keyframes drawerIn{from{transform:translateX(100%)}to{transform:none}}
+.drawer-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:22px}
+
+/* Скелетоны загрузки */
+.skeleton{border-radius:10px;background:linear-gradient(100deg,var(--glass-2) 30%,rgba(255,255,255,.06) 50%,var(--glass-2) 70%);background-size:200% 100%;animation:shimmer 1.3s infinite}
+@keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+.skeleton-row{height:52px;margin:0}
+.skeleton-card{height:104px}
+
+/* Список выгрузок */
+.list{display:grid;gap:8px}
+.list-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 16px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--glass-2)}
+.list-item .meta{font-size:.8125rem;color:var(--muted)}
+.list-item strong{font-weight:560;font-size:.875rem}
+
+.stack{display:grid;gap:18px}
+.field{display:grid;gap:7px}
+.field label{font-size:.8125rem;color:var(--muted)}
+.inline-fields{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
+.inline-fields .field{flex:1;min-width:130px}
+
+@media(max-width:760px){
+  .drawer{width:100%}
+  .action-bar{align-items:flex-start}
+}

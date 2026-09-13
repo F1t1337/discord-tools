@@ -149,9 +149,10 @@ def index():
 
 @app.get('/assets/<name>')
 def asset(name):
-    if name not in {'app.js', 'app.css'}:
+    # Собранные Vite ассеты лежат в dashboard/assets/. Отдаём только статику фронтенда.
+    if not re.fullmatch(r'[A-Za-z0-9._-]+\.(?:js|css|map)', name):
         return error('Файл не найден', 404)
-    return send_from_directory(ASSETS, name)
+    return send_from_directory(ASSETS / 'assets', name)
 
 
 @app.get('/miniapp')
