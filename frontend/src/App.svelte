@@ -1,8 +1,8 @@
 <script>
   import { onMount } from 'svelte';
-  import { api, setCsrf, setUnauthorizedHandler } from './lib/api.js';
+  import { api, authenticate, setCsrf, setUnauthorizedHandler } from './lib/api.js';
   import { startLive, stopLive } from './lib/sse.js';
-  import { session, route, liveState, autoLive, currentHash, TITLES, tick, refreshTick, purchaseStatus } from './lib/store.js';
+  import { session, route, liveState, autoLive, currentHash, TITLES, tick, refreshTick, purchaseStatus, toast } from './lib/store.js';
   import Sidebar from './components/Sidebar.svelte';
   import Toast from './components/Toast.svelte';
   import TaskBar from './components/TaskBar.svelte';
@@ -43,13 +43,13 @@
   }
 
   async function login(username, password) {
-    const r = await api('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) });
-    setCsrf(r.csrf);
+    const r = await authenticate(username, password);
     session.set({ authenticated: true, username: r.username, booted: true, error: '' });
   }
 
   async function logout() {
-    try { await api('/auth/logout', { method: 'POST', body: '{}' }); } catch (e) {}
+    try { await api('/auth/logout', { method: 'POST', body: '{}' }); }
+    catch (e) { toast(e.message); return; }
     session.update((s) => ({ ...s, authenticated: false }));
     stopLive();
   }
@@ -92,7 +92,7 @@
   });
 </script>
 
-{#if !booted}
+{#if !booted || bootError}
   <section class="boot-screen" role="status">
     <span class="brand-mark">D</span>
     <p>{bootError || 'Подключение к панели…'}</p>

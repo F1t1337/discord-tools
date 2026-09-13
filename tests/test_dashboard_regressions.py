@@ -100,6 +100,47 @@ class ReviewChecks(unittest.TestCase):
             self.assertEqual(anonymous.post(route, json={}).status_code, 401)
             self.assertEqual(self.client.post(route, json={}).status_code, 403)
 
+    def test_stream_refreshes_unchanged_data_and_closes_after_revocation(self):
+        class Clock:
+            value = 1000
+            def time(self): return self.value
+            def monotonic(self): return self.value
+            def sleep(self, seconds): self.value += seconds
+        clock = Clock()
+        with patch.object(api, 'time', clock):
+            response = self.client.get('/api/stream', buffered=False)
+            try:
+                self.assertEqual(response.status_code, 200)
+                self.assertNotIn('Connection', response.headers)
+                chunks = iter(response.response)
+                self.assertIn(b'retry:', next(chunks))
+                self.assertIn(b'event: update', next(chunks))
+                self.assertIn(b'event: update', next(chunks))
+                self.assertEqual(clock.value, 1005)
+                with api.state_lock:
+                    api.auth_sessions.clear()
+                self.assertIn(b'event: auth-expired', next(chunks))
+                with self.assertRaises(StopIteration):
+                    next(chunks)
+            finally:
+                response.close()
+        slots = [api.stream_slots.acquire(blocking=False) for _ in range(4)]
+        for acquired in slots:
+            if acquired:
+                api.stream_slots.release()
+        self.assertEqual(slots, [True] * 4)
+
+    def test_stream_rejects_excess_connections_and_anonymous_clients(self):
+        self.assertEqual(api.app.test_client().get('/api/stream').status_code, 401)
+        for _ in range(4):
+            self.assertTrue(api.stream_slots.acquire(blocking=False))
+        try:
+            self.assertEqual(self.client.get('/api/stream').status_code, 503)
+            self.assertEqual(self.client.get('/api/health').status_code, 200)
+        finally:
+            for _ in range(4):
+                api.stream_slots.release()
+
     def test_happy_export_download(self):
         self.ready('synthetic-record-A')
         job = self.export()
@@ -369,7 +410,7 @@ class ReviewChecks(unittest.TestCase):
         from waitress import create_server
         self.ready('synthetic-record-A')
         self.export()
-        server = create_server(api.app, host='127.0.0.1', port=0, threads=2)
+        server = create_server(api.app, host='127.0.0.1', port=0, threads=8)
         stopped = threading.Event()
         def serve():
             while not stopped.is_set():
@@ -382,17 +423,40 @@ class ReviewChecks(unittest.TestCase):
             with opener.open(base + '/healthz', timeout=5) as response:
                 self.assertEqual(json.load(response)['status'], 'ok')
             with opener.open(base + '/assets/app.js', timeout=5) as response:
-                self.assertIn(b'token-export-history', response.read())
+                self.assertEqual(response.read(), (ROOT / 'dashboard/assets/app.js').read_bytes())
             with opener.open(base + '/api/auth/session', timeout=5) as response:
                 csrf = json.load(response)['csrf']
             request = urllib.request.Request(base + '/api/auth/login', method='POST',
                 data=json.dumps({'username': 'review', 'password': self.password}).encode(),
                 headers={'Content-Type': 'application/json', 'X-CSRF-Token': csrf})
             with opener.open(request, timeout=5) as response:
-                self.assertTrue(json.load(response)['authenticated'])
+                login = json.load(response)
+                self.assertTrue(login['authenticated'])
             with opener.open(base + '/api/tokens/export/download', timeout=5) as response:
                 self.assertEqual(response.read(), b'synthetic-record-A\n')
                 self.assertEqual(response.headers['Cache-Control'], 'no-store')
+            streams = []
+            try:
+                for _ in range(4):
+                    stream = opener.open(base + '/api/stream', timeout=5)
+                    streams.append(stream)
+                    self.assertEqual(stream.headers.get_content_type(), 'text/event-stream')
+                    self.assertEqual(stream.readline(), b'retry: 3000\n')
+                with self.assertRaises(urllib.error.HTTPError) as rejected:
+                    opener.open(base + '/api/stream', timeout=5)
+                self.assertEqual(rejected.exception.code, 503)
+                with opener.open(base + '/api/health', timeout=5) as response:
+                    self.assertEqual(response.status, 200)
+                revoke = urllib.request.Request(base + '/api/auth/revoke', method='POST',
+                    data=b'{}', headers={'Content-Type': 'application/json',
+                                        'X-CSRF-Token': login['csrf']})
+                with opener.open(revoke, timeout=5) as response:
+                    self.assertEqual(response.status, 200)
+                for stream in streams:
+                    self.assertIn(b'event: auth-expired', stream.read())
+            finally:
+                for stream in streams:
+                    stream.close()
         finally:
             stopped.set()
             server.pull_trigger()

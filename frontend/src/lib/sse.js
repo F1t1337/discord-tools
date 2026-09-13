@@ -26,6 +26,12 @@ export function startLive(onUpdate, onStatus) {
   source = src;
   src.onopen = () => { retry = 0; onStatus?.('live'); };
   src.addEventListener('update', () => { retry = 0; onStatus?.('live'); onUpdate?.(); });
+  src.addEventListener('auth-expired', () => {
+    if (source !== src) return;
+    stopLive();
+    onStatus?.('offline');
+    onUpdate?.(); // Protected API requests return 401 and show the login form.
+  });
   src.onerror = () => {
     if (source !== src) return;
     onStatus?.('offline');

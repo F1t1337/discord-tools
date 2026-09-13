@@ -6,6 +6,18 @@ export function setCsrf(value) { csrf = value || ''; }
 export function getCsrf() { return csrf; }
 export function setUnauthorizedHandler(fn) { onUnauthorized = fn; }
 
+export async function authenticate(username, password) {
+  // Logout/revoke clears the server cookie; bootstrap a fresh CSRF even when
+  // the login form is shown without a full page reload.
+  const bootstrap = await api('/auth/session');
+  setCsrf(bootstrap.csrf);
+  const result = await api('/auth/login', {
+    method: 'POST', body: JSON.stringify({ username, password }),
+  });
+  setCsrf(result.csrf);
+  return result;
+}
+
 export async function api(path, options = {}) {
   const headers = new Headers(options.headers || {});
   if (options.method && options.method !== 'GET') {

@@ -33,6 +33,8 @@ settings = None
 started_at = time.time()
 stop_requested = False
 state_lock = threading.Lock()
+# Leave at least four of Waitress's eight workers free for ordinary requests.
+stream_slots = threading.BoundedSemaphore(4)
 login_attempts = OrderedDict()
 auth_sessions = {}
 TOKEN_PATTERN = re.compile(r'(?:mfa\.[\w-]{20,}|[\w-]{20,}\.[\w-]{5,}\.[\w-]{20,}|\b\d{6,}:[A-Za-z0-9_-]{25,})')
@@ -304,9 +306,21 @@ def stream():
     """Server-Sent Events: живые обновления вместо клиентского поллинга.
 
     Сервер отслеживает дешёвую сигнатуру состояния (счётчики БД, задача покупки,
-    фоновые задания) и шлёт событие 'update' только при изменении; между ними —
-    ping для поддержания соединения. Клиент по событию перечитывает текущую вкладку.
+    фоновые задания) и шлёт событие 'update' при изменении или раз в пять секунд.
+    Клиент по событию перечитывает текущую вкладку, включая журнал и метрики.
     """
+    if not stream_slots.acquire(blocking=False):
+        return error('Лимит live-подключений. Используйте периодический опрос.', 503)
+    release_lock = threading.Lock()
+    released = False
+
+    def release_slot():
+        nonlocal released
+        with release_lock:
+            if not released:
+                released = True
+                stream_slots.release()
+
     def signature():
         parts = [stop_requested]
         try:
@@ -329,29 +343,31 @@ def stream():
         return hash(repr(parts))
 
     def gen():
-        yield 'retry: 3000\n\n'
-        last = object()
-        heartbeat = time.time()
-        deadline = time.time() + 1800  # переподключение раз в 30 мин ограничивает жизнь потока
-        while time.time() < deadline:
-            try:
+        try:
+            yield 'retry: 3000\n\n'
+            last = object()
+            refreshed = time.monotonic()
+            deadline = refreshed + 1800
+            while time.monotonic() < deadline:
+                if not authenticated():
+                    yield 'event: auth-expired\ndata: {}\n\n'
+                    return
                 sig = signature()
-            except Exception:
-                sig = None
-            now = time.time()
-            if sig != last:
-                last = sig
-                heartbeat = now
-                yield f'event: update\ndata: {int(now)}\n\n'
-            elif now - heartbeat >= 15:
-                heartbeat = now
-                yield ': ping\n\n'
-            time.sleep(1)
+                now = time.monotonic()
+                # Logs, rolling metrics and settings can change independently
+                # of the cheap signature. Refresh them at least every 5s.
+                if sig != last or now - refreshed >= 5:
+                    last = sig
+                    refreshed = now
+                    yield f'event: update\ndata: {int(time.time())}\n\n'
+                time.sleep(1)
+        finally:
+            release_slot()
 
     response = Response(stream_with_context(gen()), mimetype='text/event-stream')
     response.headers['Cache-Control'] = 'no-cache'
     response.headers['X-Accel-Buffering'] = 'no'
-    response.headers['Connection'] = 'keep-alive'
+    response.call_on_close(release_slot)
     return response
 
 
