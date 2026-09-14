@@ -83,6 +83,27 @@ class FinanceTests(unittest.TestCase):
         self.finance.receive_price(export_id, 50)
         self.assertEqual(self.finance.report('day', '2026-09-14')['earned_minor'], 3015)
 
+    def test_auto_poll_takes_initial_and_manual_refresh_takes_final(self):
+        ident = self.batch()
+        service, export_id = self.submission(ident)
+        # Авто-опрос берёт initial_total и прекращает опрос.
+        service.client.status = Mock(return_value={'id': 91, 'status': 'awaiting_manual', 'finished_at': None,
+            'price_result': {'initial_total': 3601.08, 'final_total': 0.0}})
+        self.now += 10
+        service.poll_once()
+        self.assertEqual(self.db.get_tskupka_task(export_id)['price_minor'], 360108)
+        self.assertEqual(self.finance.due_tasks(), [])
+        # Ручное обновление, пока final не готов — сумму не меняет.
+        self.now += 10
+        service.refresh(export_id)
+        self.assertEqual(self.db.get_tskupka_task(export_id)['price_minor'], 360108)
+        # После финализации ручное обновление подтягивает актуальный final_total.
+        service.client.status = Mock(return_value={'id': 91, 'status': 'manually_completed',
+            'finished_at': '2026-09-14T21:00:00', 'price_result': {'initial_total': 3601.08, 'final_total': 3500.0}})
+        self.now += 10
+        service.refresh(export_id)
+        self.assertEqual(self.db.get_tskupka_task(export_id)['price_minor'], 350000)
+
     def test_zero_price_is_a_result_not_pending(self):
         _, export_id = self.submission(self.batch())
         self.finance.receive_price(export_id, 0)

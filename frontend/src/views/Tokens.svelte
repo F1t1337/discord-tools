@@ -146,7 +146,7 @@
   <article class="panel" use:reveal={1}>
     <div class="panel-heading"><div><p class="section-label">Выгрузка</p><h2>Сохранённые файлы</h2></div></div>
     <p class="muted">Проверенные токены сохраняются в истории и помечаются «отправлены». Файл остаётся доступным после перезапуска и ошибок Telegram.</p>
-    <p class="muted">«Обычная выгрузка» сохраняет файл и отправляет его в Telegram. «Выгрузить в Tskupka» проверяет готовые токены выбранной закупки и передаёт их без отдельного подтверждения. До получения price_result статус опрашивается раз в 10 секунд.</p>
+    <p class="muted">«Обычная выгрузка» сохраняет файл и отправляет его в Telegram. «Выгрузить в Tskupka» проверяет готовые токены выбранной закупки и передаёт их без отдельного подтверждения. Предварительная сумма (initial_total) подтягивается автоматически, после чего опрос прекращается. Итоговую сумму (final_total, после ручной проверки Tskupka) подтягивает кнопка «Обновить Tskupka» — пока она не готова, значение не меняется.</p>
     {#if !job.tskupka_configured}<p class="muted">Отправка в Tskupka не настроена. Задайте TSKUPKA_API_KEY в .env сервера и перезапустите приложение.</p>{/if}
     {#if !history.length}
       <div class="empty-state"><strong>Пока нет выгрузок</strong><p>Выберите обычную выгрузку или Tskupka, когда накопятся готовые токены.</p></div>
@@ -158,7 +158,7 @@
               <p class="meta">{tskupkaLabel(item.tskupka)}</p>
               {#if item.tskupka?.error}<p class="form-error">{item.tskupka.error}</p>{/if}
               {#if item.tskupka?.price_minor != null}<p class="meta">price_result: {number(item.tskupka.price_minor / 100)} ₽</p>
-              {:else if item.tskupka?.task_id}<p class="meta">Ожидаем price_result · опрос каждые 10 секунд</p>{/if}
+              {:else if item.tskupka?.task_id}<p class="meta">Ожидаем предварительную сумму…</p>{/if}
             </div>
             <div class="header-actions">
               <button class="button secondary small" onclick={() => download(item.id)}><Icon name="download" size={15} /> .txt</button>

@@ -49,19 +49,15 @@ class TskupkaClient:
         return self.request('GET', '/me')
 
 
-def extract_price(data):
-    """Кандидат итоговой выплаты из ответа Tskupka; число/строку проверит money_minor.
+def price_from(data, key):
+    """Значение суммы из ответа Tskupka по ключу ('initial_total' | 'final_total').
 
-    price_result приходит объектом ({initial_total, final_total, deduction, ...}) —
-    берём final_total (сумму после множителей и вычетов; иначе initial_total).
-    Поддержан и старый формат, где price_result — число или строка-число.
-    None — суммы ещё нет (price_result отсутствует / null)."""
+    price_result приходит объектом ({initial_total, final_total, deduction, ...}).
+    Поддержан и старый формат, где price_result — число/строка-число (тогда оба ключа
+    дают это значение). None — если поля/суммы ещё нет. money_minor проверит число."""
     result = data.get('price_result')
     if isinstance(result, dict):
-        for key in ('final_total', 'initial_total'):
-            if result.get(key) is not None:
-                return result[key]
-        return None
+        return result.get(key)
     return result
 
 
@@ -161,16 +157,23 @@ class TskupkaService:
             self.db.save_tskupka_task(export_id, 'submitted', remote_status=status,
                                      summary={**task['summary'], **safe_summary(data)})
             raw_price = data.get('price_result')
-            # Сумму фиксируем только когда задача действительно завершена. В промежуточных
-            # статусах (awaiting_manual и т.п.) final_total бывает плейсхолдером 0 при
-            # ненулевом initial_total — иначе записали бы 0 навсегда. Ждём финализации.
-            final = bool(data.get('finished_at')) or status in ('completed', 'manually_completed', 'cancelled', 'rejected')
-            price = extract_price(data) if final else None
-            if final and price is None and raw_price is not None:
-                # Завершена, но формат price_result не распознан — не считаем нулём/amount_paid.
+            initial = price_from(data, 'initial_total')
+            final_value = price_from(data, 'final_total')
+            # Неизвестная структура: объект без initial_total и final_total.
+            if isinstance(raw_price, dict) and initial is None and final_value is None:
                 raise TskupkaError('Неизвестный формат price_result: сумма ещё не учтена.')
+            final_ready = bool(data.get('finished_at')) or status in (
+                'completed', 'manually_completed', 'cancelled', 'rejected')
             try:
-                Finance(self.db).receive_price(export_id, price)
+                if background:
+                    # Авто-опрос: как только есть предварительная сумма (initial_total) —
+                    # фиксируем её и прекращаем опрос (задача выпадает из due_tasks).
+                    if initial is not None:
+                        Finance(self.db).receive_price(export_id, initial)
+                elif final_ready and final_value is not None:
+                    # Ручное обновление: подтягиваем актуальный final_total. Если он ещё
+                    # не готов — ничего не меняем (оставляем ранее записанную сумму).
+                    Finance(self.db).set_price(export_id, final_value)
             except ValueError:
                 raise TskupkaError('Неизвестный формат price_result: сумма ещё не учтена.') from None
         except TskupkaError as exc:

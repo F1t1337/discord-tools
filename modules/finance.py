@@ -127,6 +127,15 @@ class Finance:
             conn.execute('''UPDATE tskupka_tasks SET price_minor=?, price_at=?
                 WHERE export_id=? AND price_minor IS NULL''', (amount, time.time(), export_id))
 
+    def set_price(self, export_id, value):
+        """Перезаписывает сумму задачи актуальным значением (ручное обновление до final)."""
+        if value is None:
+            return
+        amount = money_minor(value)
+        with self.db.get_connection() as conn:
+            conn.execute('UPDATE tskupka_tasks SET price_minor=?, price_at=? WHERE export_id=?',
+                         (amount, time.time(), export_id))
+
     def report(self, period, anchor=None, timezone='Europe/Saratov', offset=0):
         zone = resolve_zone(timezone)
         selected = date.fromisoformat(anchor) if anchor else datetime.now(zone).date()
