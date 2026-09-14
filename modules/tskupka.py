@@ -45,6 +45,9 @@ class TskupkaClient:
     def status(self, task_id):
         return self.request('GET', f'/tasks/{task_id}')
 
+    def me(self):
+        return self.request('GET', '/me')
+
 
 def extract_price(data):
     """Итоговая выплата из ответа Tskupka.
@@ -116,6 +119,13 @@ class TskupkaService:
     @property
     def configured(self):
         return bool(self.client.api_key)
+
+    def balance(self):
+        """Текущий баланс аккаунта Tskupka (₽). Только по запросу — без фонового опроса."""
+        value = self.client.me().get('balance')
+        if type(value) not in (int, float) or not math.isfinite(value):
+            raise TskupkaError('Tskupka вернула некорректный баланс.')
+        return float(value)
 
     def submit(self, export_id):
         if not self.db.claim_tskupka_export(export_id):

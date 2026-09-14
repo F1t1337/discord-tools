@@ -5,6 +5,25 @@
   import PageHeader from '../components/PageHeader.svelte';
   import Segmented from '../components/Segmented.svelte';
   import Skeleton from '../components/Skeleton.svelte';
+  import Icon from '../components/Icon.svelte';
+
+  // Балансы обновляются только кнопкой (и один раз при открытии) — без фонового опроса.
+  let balances = $state(null);
+  let balancesLoading = $state(false);
+  async function loadBalances() {
+    balancesLoading = true;
+    try { balances = await api('/balances'); }
+    catch (e) { /* оставляем прежние значения */ }
+    finally { balancesLoading = false; }
+  }
+  $effect(() => { loadBalances(); }); // однократно при монтировании вкладки
+
+  const lztValue = $derived(!balances ? '…'
+    : balances.lzt.balance == null ? '—' : money(balances.lzt.balance));
+  const tskValue = $derived(!balances ? '…'
+    : !balances.tskupka.configured ? 'не настроено'
+    : balances.tskupka.balance == null ? (balances.tskupka.error ? 'ошибка' : '—')
+    : money(balances.tskupka.balance));
 
   let period = $state('day');
   let selectedDate = $state('');
@@ -28,6 +47,21 @@
 </script>
 
 <PageHeader title="Статистика" description="Расходы на аккаунты, заработок Tskupka и прибыль." />
+
+<article class="panel">
+  <div class="panel-heading">
+    <div><p class="section-label">Балансы</p><h2>LZT и Tskupka</h2></div>
+    <button class="button secondary small" onclick={loadBalances} disabled={balancesLoading}>
+      <Icon name="refresh" size={15} /> Обновить балансы
+    </button>
+  </div>
+  <div class="statgrid">
+    <div class="stat"><div class="k">Баланс LZT</div><div class="v">{lztValue}</div></div>
+    <div class="stat"><div class="k">Баланс Tskupka</div><div class="v">{tskValue}</div></div>
+  </div>
+  <p class="muted">Обновляется только по кнопке — фоновых запросов к LZT и Tskupka нет.</p>
+</article>
+
 <div class="toolbar">
   <Segmented {options} bind:value={period} ariaLabel="Период статистики" />
   <label>Дата в периоде <input type="date" aria-label="Дата в периоде" value={selectedDate || data?.date || ''} onchange={(e) => selectedDate = e.target.value}></label>

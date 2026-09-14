@@ -734,6 +734,22 @@ def lzt_balance():
                    enabled=bool(config.get('lzt', {}).get('enabled')), available=True)
 
 
+@app.get('/api/balances')
+def balances():
+    """Балансы LZT и Tskupka по запросу (кнопкой), без фонового опроса."""
+    lzt = {'balance': None, 'available': False}
+    if pipeline is not None and hasattr(pipeline, 'get_lzt_balance'):
+        lzt = {'balance': pipeline.get_lzt_balance(), 'available': True}
+    tsk = {'balance': None, 'available': False, 'configured': bool(tskupka and tskupka.configured)}
+    if tskupka is not None and tskupka.configured:
+        try:
+            tsk = {'balance': tskupka.balance(), 'available': True, 'configured': True}
+        except (TskupkaError, RuntimeError, ValueError) as exc:
+            logger.warning('Не удалось получить баланс Tskupka: %s', type(exc).__name__)
+            tsk = {'balance': None, 'available': True, 'configured': True, 'error': True}
+    return jsonify(lzt=lzt, tskupka=tsk)
+
+
 # ==================== ЗАДАЧА ПОКУПКИ АККАУНТОВ ====================
 
 MAX_PURCHASE_COUNT = 1000
