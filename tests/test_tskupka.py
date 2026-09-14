@@ -167,16 +167,16 @@ class TskupkaTests(unittest.TestCase):
             row = conn.execute('SELECT price_minor FROM tskupka_tasks WHERE export_id=?', (self.export_id,)).fetchone()
         self.assertEqual(row['price_minor'], 117216)  # 1172.16 ₽
 
-    def test_awaiting_manual_placeholder_price_is_not_recorded(self):
-        # Незавершённая задача (awaiting_manual) с плейсхолдером final_total=0 —
-        # сумму не фиксируем, ждём финализации; это не ошибка.
+    def test_manual_refresh_pulls_initial_when_final_not_ready(self):
+        # Незавершённая задача (awaiting_manual, final_total=0 плейсхолдер): ручное
+        # обновление подтягивает предварительную сумму initial_total, не final.
         self.respond({'task_id': 91, 'unique_tokens': 1})
         self.assertEqual(self.submit().status_code, 200)
         self.respond({'id': 91, 'status': 'awaiting_manual', 'finished_at': None,
                       'price_result': {'initial_total': 3601.08, 'final_total': 0.0, 'deduction': 0.0}})
         self.assertEqual(self.client.post(self.url + '/refresh', headers=self.headers).status_code, 200)
         row = api.db.get_tskupka_task(self.export_id)
-        self.assertIsNone(row['price_minor'])
+        self.assertEqual(row['price_minor'], 360108)
         self.assertIsNone(row['error'])
         self.assertEqual(row['remote_status'], 'awaiting_manual')
 

@@ -93,7 +93,8 @@ class FinanceTests(unittest.TestCase):
         service.poll_once()
         self.assertEqual(self.db.get_tskupka_task(export_id)['price_minor'], 360108)
         self.assertEqual(self.finance.due_tasks(), [])
-        # Ручное обновление, пока final не готов — сумму не меняет.
+        # Ручное обновление чинит уже записанную неверную сумму (final не готов → initial).
+        self.finance.set_price(export_id, 0)
         self.now += 10
         service.refresh(export_id)
         self.assertEqual(self.db.get_tskupka_task(export_id)['price_minor'], 360108)

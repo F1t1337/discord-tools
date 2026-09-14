@@ -170,10 +170,13 @@ class TskupkaService:
                     # фиксируем её и прекращаем опрос (задача выпадает из due_tasks).
                     if initial is not None:
                         Finance(self.db).receive_price(export_id, initial)
-                elif final_ready and final_value is not None:
-                    # Ручное обновление: подтягиваем актуальный final_total. Если он ещё
-                    # не готов — ничего не меняем (оставляем ранее записанную сумму).
-                    Finance(self.db).set_price(export_id, final_value)
+                else:
+                    # Ручное обновление: перезаписываем актуальным значением — итоговым
+                    # (final_total) после финализации, иначе предварительным (initial_total).
+                    # Так можно исправить и уже записанную неверную сумму. Нет данных — не трогаем.
+                    value = final_value if (final_ready and final_value is not None) else initial
+                    if value is not None:
+                        Finance(self.db).set_price(export_id, value)
             except ValueError:
                 raise TskupkaError('Неизвестный формат price_result: сумма ещё не учтена.') from None
         except TskupkaError as exc:
