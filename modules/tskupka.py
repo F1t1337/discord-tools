@@ -161,9 +161,13 @@ class TskupkaService:
             self.db.save_tskupka_task(export_id, 'submitted', remote_status=status,
                                      summary={**task['summary'], **safe_summary(data)})
             raw_price = data.get('price_result')
-            price = extract_price(data)
-            if price is None and raw_price is not None:
-                # price_result есть, но формат не распознан — не считаем нулём/amount_paid.
+            # Сумму фиксируем только когда задача действительно завершена. В промежуточных
+            # статусах (awaiting_manual и т.п.) final_total бывает плейсхолдером 0 при
+            # ненулевом initial_total — иначе записали бы 0 навсегда. Ждём финализации.
+            final = bool(data.get('finished_at')) or status in ('completed', 'manually_completed', 'cancelled', 'rejected')
+            price = extract_price(data) if final else None
+            if final and price is None and raw_price is not None:
+                # Завершена, но формат price_result не распознан — не считаем нулём/amount_paid.
                 raise TskupkaError('Неизвестный формат price_result: сумма ещё не учтена.')
             try:
                 Finance(self.db).receive_price(export_id, price)
