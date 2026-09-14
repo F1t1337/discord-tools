@@ -301,7 +301,7 @@ def get_status():
         threads=live['threads'] if live else {}, counts=counts,
         schema_version=db.schema_version(),
         pending_count=sum(counts.get(status, 0) for status in ('new', 'validated', 'cleaning', 'cleaned')),
-        recovery_mode='manual_review',
+        recovery_mode='auto_resume',
     )
 
 

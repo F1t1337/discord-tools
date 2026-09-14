@@ -1190,6 +1190,49 @@ class TokenPipeline:
         
         logger.info(f"✅ Pipeline запущен успешно! Всего потоков: {len(self.threads) + len(self._cleaner_workers)}")
 
+        # Возобновляем незавершённые аккаунты (new/validated/cleaning/cleaned): они
+        # заново пройдут проверку и с лимитом попыток дойдут до финала (ready/invalid).
+        # Так после перезапуска ничего не «зависает» в промежуточных состояниях.
+        self._resume_pending()
+
+    def _resume_pending(self):
+        """Ставит незавершённые записи обратно в соответствующие очереди."""
+        if bool(self.config.get('pipeline', {}).get('resume_pending', True)) is False:
+            return
+        stage_queue = {
+            'new': self.new_tokens_queue,
+            'validated': self.validated_queue,
+            'cleaning': self.validated_queue,   # прерванную очистку начинаем заново
+            'cleaned': self.cleaned_queue,
+        }
+        resumed = 0
+        for status, queue in stage_queue.items():
+            try:
+                rows = self.db.get_tokens_by_status(status)
+            except Exception:
+                logger.warning('Не удалось прочитать записи в статусе %s для возобновления', status)
+                continue
+            for row in rows:
+                token = row.get('token')
+                if not token:
+                    continue
+                if status == 'cleaning':
+                    # Возвращаем в статус validated, чтобы очистка началась с чистого листа.
+                    try:
+                        self.db.update_token_status(token=token, status='validated',
+                                                    cleaning_progress='Возобновление после перезапуска')
+                    except Exception:
+                        continue
+                queue.put({
+                    'token': token, 'item_id': row.get('lzt_item_id'),
+                    'username': row.get('username') or 'Resumed',
+                    'seller_username': row.get('seller_username') or 'resumed',
+                    'price': row.get('price') or 0, 'purchase_id': row.get('purchase_id'),
+                })
+                resumed += 1
+        if resumed:
+            logger.info('♻️ Возобновлено незавершённых аккаунтов: %d', resumed)
+
     # ==================== УПРАВЛЕНИЕ ПОТОКАМИ ОЧИСТКИ ====================
 
     def _spawn_cleaner_workers(self, count: int):
