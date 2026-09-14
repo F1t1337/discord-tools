@@ -72,7 +72,7 @@
   <p class="muted">{data.start} — {data.end} · Часовой пояс: {data.timezone}. Неделя — с понедельника, месяц — календарный.</p>
   <div class="metrics finance-metrics">
     <article class="metric"><p class="metric-label">Потрачено на аккаунты</p><p class="metric-value">{cash(data.spent_minor)}</p><p class="metric-note">По дате успешной покупки</p></article>
-    <article class="metric"><p class="metric-label">Заработано в Tskupka</p><p class="metric-value">{cash(data.earned_minor)}</p><p class="metric-note">По дате первого получения price_result</p></article>
+    <article class="metric"><p class="metric-label">Заработано в Tskupka</p><p class="metric-value">{cash(data.earned_minor)}</p><p class="metric-note">По дате закупки (доход связки — в день покупки)</p></article>
     <article class="metric"><p class="metric-label">Прибыль за период</p><p class="metric-value">{cash(data.profit_minor)}</p><p class="metric-note">Заработано − потрачено</p></article>
   </div>
   {#if data.awaiting_price}<div class="alert warning">Ожидают price_result: {number(data.awaiting_price)} задач. Они опрашиваются раз в 10 секунд, в том числе после перезапуска сервера. Их доход ещё не учтён.</div>{/if}
@@ -86,7 +86,7 @@
   </article>
   <article class="panel table-panel">
     <div class="panel-heading"><h2>Закупка → сдача</h2></div>
-    <p class="table-note">В каждой строке — полная стоимость закупки и её единственной сдачи, даже если они пришлись на разные дни. Общие итоги выше учитывают даты отдельных расходов и доходов.</p>
+    <p class="table-note">В каждой строке — полная стоимость закупки и её единственной сдачи. Итоги и разбивка по дням считаются по дате закупки: и расход, и доход связки относятся к дню покупки, даже если price_result пришёл позже.</p>
     <div class="table-overflow"><table>
       <thead><tr><th>Закупка</th><th>Аккаунты</th><th>Потрачено</th><th>Сдача</th><th>Заработано</th><th>Прибыль</th><th>Состояние</th></tr></thead>
       <tbody>

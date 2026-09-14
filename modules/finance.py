@@ -140,14 +140,21 @@ class Finance:
             legacy = list(conn.execute('SELECT * FROM legacy_expenses WHERE date>=? AND date<?', (start.isoformat(), end.isoformat())))
             for row in legacy:
                 days[row['date']]['spent_minor'] += row['cost_minor']
-            for row in conn.execute('SELECT price_at, price_minor FROM tskupka_tasks WHERE price_at>=? AND price_at<? AND price_minor IS NOT NULL', (since, until)):
-                days[datetime.fromtimestamp(row['price_at'], zone).date().isoformat()]['earned_minor'] += row['price_minor']
+            # Доход относим к дате ЗАКУПКИ — расход и доход связки в одном периоде.
+            # Для сдач без закупки даты покупки нет — берём дату получения price_result.
+            for row in conn.execute('''SELECT t.price_minor AS earned,
+                    COALESCE(p.started_at, t.price_at) AS anchor_at FROM tskupka_tasks t
+                    LEFT JOIN export_batches e ON e.id=t.export_id
+                    LEFT JOIN purchase_batches p ON p.id=e.purchase_id
+                    WHERE t.price_minor IS NOT NULL
+                    AND COALESCE(p.started_at, t.price_at)>=? AND COALESCE(p.started_at, t.price_at)<?''', (since, until)):
+                days[datetime.fromtimestamp(row['anchor_at'], zone).date().isoformat()]['earned_minor'] += row['earned']
+            # Связки перечисляем по дате закупки, чтобы список совпадал с итогами периода.
             base = '''FROM purchase_batches p LEFT JOIN export_batches e ON e.purchase_id=p.id
                 LEFT JOIN tskupka_tasks t ON t.export_id=e.id WHERE
-                (p.started_at>=? AND p.started_at<?) OR (t.price_at>=? AND t.price_at<?)
-                OR (e.created_at>=? AND e.created_at<?)
+                (p.started_at>=? AND p.started_at<?)
                 OR EXISTS(SELECT 1 FROM purchase_expenses x WHERE x.purchase_id=p.id AND x.bought_at>=? AND x.bought_at<?)'''
-            params = (since, until, since, until, since, until, since, until)
+            params = (since, until, since, until)
             total = conn.execute('SELECT COUNT(*) ' + base, params).fetchone()[0]
             rows = conn.execute('''SELECT p.*, e.id AS export_id, e.created_at AS export_created_at, t.task_id, t.state AS submission_state,
                 t.remote_status, t.price_minor AS earned_minor, t.price_at, t.error,

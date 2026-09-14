@@ -50,21 +50,19 @@ class TskupkaClient:
 
 
 def extract_price(data):
-    """Итоговая выплата из ответа Tskupka.
+    """Кандидат итоговой выплаты из ответа Tskupka; число/строку проверит money_minor.
 
     price_result приходит объектом ({initial_total, final_total, deduction, ...}) —
-    берём final_total (сумму после множителей и вычетов). Поддержан и старый формат,
-    где price_result — число. Если суммы ещё нет — None (продолжаем опрос)."""
+    берём final_total (сумму после множителей и вычетов; иначе initial_total).
+    Поддержан и старый формат, где price_result — число или строка-число.
+    None — суммы ещё нет (price_result отсутствует / null)."""
     result = data.get('price_result')
     if isinstance(result, dict):
         for key in ('final_total', 'initial_total'):
-            value = result.get(key)
-            if type(value) in (int, float) and math.isfinite(value):
-                return value
+            if result.get(key) is not None:
+                return result[key]
         return None
-    if type(result) in (int, float) and math.isfinite(result):
-        return result
-    return None
+    return result
 
 
 def safe_summary(data):
@@ -162,8 +160,13 @@ class TskupkaService:
                 raise TskupkaError('Tskupka вернула неизвестный формат статуса.')
             self.db.save_tskupka_task(export_id, 'submitted', remote_status=status,
                                      summary={**task['summary'], **safe_summary(data)})
+            raw_price = data.get('price_result')
+            price = extract_price(data)
+            if price is None and raw_price is not None:
+                # price_result есть, но формат не распознан — не считаем нулём/amount_paid.
+                raise TskupkaError('Неизвестный формат price_result: сумма ещё не учтена.')
             try:
-                Finance(self.db).receive_price(export_id, extract_price(data))
+                Finance(self.db).receive_price(export_id, price)
             except ValueError:
                 raise TskupkaError('Неизвестный формат price_result: сумма ещё не учтена.') from None
         except TskupkaError as exc:
