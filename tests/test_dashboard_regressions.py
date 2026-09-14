@@ -44,6 +44,7 @@ class ReviewChecks(unittest.TestCase):
         self.pipe._intake_lock = threading.Lock()
         self.pipe._export_lock = threading.Lock()
         self.pipe.close_channels = True
+        self.pipe.max_stage_attempts = 15
         self.pipe.new_tokens_queue = Queue()
         self.pipe.validator = SimpleNamespace(validate_token=Mock(return_value=(True, 'synthetic')))
         self.pipe.telegram = SimpleNamespace(send_tokens_file=Mock(return_value=True))

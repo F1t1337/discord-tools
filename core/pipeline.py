@@ -48,6 +48,11 @@ class TokenPipeline:
         # Закрывать ли чаты при очистке (переключается из Telegram)
         self.close_channels = bool(config.get('cleaner', {}).get('close_channels', True))
 
+        # Сколько раз повторять этап (валидация/очистка) при недоступности проверки или
+        # сетевых сбоях, прежде чем сдаться и пометить аккаунт invalid — чтобы «тяжёлый»
+        # токен не крутился в очереди бесконечно и задача могла завершиться.
+        self.max_stage_attempts = max(1, int(config.get('cleaner', {}).get('max_stage_attempts', 15) or 15))
+
         # Очереди для передачи между этапами
         self.new_tokens_queue = Queue()      # Новые токены из LZT
         self.validated_queue = Queue()       # Прошедшие первую валидацию
@@ -855,7 +860,14 @@ class TokenPipeline:
                 try:
                     is_valid, username = self.validator.validate_token(purchase['token'], strict=True, stage='validator_initial')
                 except Exception as e:
-                    logger.error(f"❌ [Validator #1] Ошибка валидации: {e}")
+                    purchase['_v1_fail'] = purchase.get('_v1_fail', 0) + 1
+                    logger.error(f"❌ [Validator #1] Ошибка валидации (попытка {purchase['_v1_fail']}): {e}")
+                    if purchase['_v1_fail'] >= self.max_stage_attempts:
+                        logger.error(f"❌ [Validator #1] Токен не проверен после {purchase['_v1_fail']} попыток — помечаю invalid")
+                        self.db.update_token_status(token=purchase['token'], status='invalid',
+                                                    error=f'Проверка недоступна после {purchase["_v1_fail"]} попыток')
+                        self.new_tokens_queue.task_done()
+                        continue
                     # Возвращаем токен обратно в очередь для повторной попытки
                     self.new_tokens_queue.put(purchase)
                     self.new_tokens_queue.task_done()
@@ -967,6 +979,14 @@ class TokenPipeline:
                     process_token(api, purchase['token'], progress_tracker,
                                   close_channels=self.close_channels)
                     if api.request_failed:
+                        purchase['_clean_fail'] = purchase.get('_clean_fail', 0) + 1
+                        if purchase['_clean_fail'] >= self.max_stage_attempts:
+                            logger.error(f"❌ [Cleaner] Не удалось очистить {purchase.get('username','?')} "
+                                         f"после {purchase['_clean_fail']} попыток — помечаю invalid")
+                            self.db.update_token_status(token=purchase['token'], status='invalid',
+                                                        error=f'Не удалось очистить после {purchase["_clean_fail"]} попыток (сеть/лимиты)')
+                            self.validated_queue.task_done()
+                            continue
                         self.db.update_token_status(token=purchase['token'], status='validated',
                                                     cleaning_progress='Ожидание после сетевой ошибки или rate limit')
                         self.validated_queue.put(purchase)
@@ -1016,7 +1036,14 @@ class TokenPipeline:
                 try:
                     is_valid, username = self.validator.validate_token(purchase['token'], strict=True, stage='validator_final')
                 except Exception as e:
-                    logger.error(f"❌ [Validator #2] Ошибка валидации: {e}")
+                    purchase['_v2_fail'] = purchase.get('_v2_fail', 0) + 1
+                    logger.error(f"❌ [Validator #2] Ошибка валидации (попытка {purchase['_v2_fail']}): {e}")
+                    if purchase['_v2_fail'] >= self.max_stage_attempts:
+                        logger.error(f"❌ [Validator #2] Финальная проверка недоступна после {purchase['_v2_fail']} попыток — помечаю invalid")
+                        self.db.update_token_status(token=purchase['token'], status='invalid',
+                                                    error=f'Финальная проверка недоступна после {purchase["_v2_fail"]} попыток')
+                        self.cleaned_queue.task_done()
+                        continue
                     # Возвращаем токен обратно в очередь для повторной попытки
                     self.cleaned_queue.put(purchase)
                     self.cleaned_queue.task_done()
