@@ -156,6 +156,17 @@ class TskupkaTests(unittest.TestCase):
         self.assertEqual(api.db.get_tskupka_task(self.export_id)['remote_status'], 'completed')
         self.assertEqual(self.submit().status_code, 409)
 
+    def test_object_price_result_records_final_total(self):
+        # Tskupka отдаёт price_result объектом; берём final_total как итоговую выплату.
+        self.respond({'task_id': 91, 'unique_tokens': 1})
+        self.assertEqual(self.submit().status_code, 200)
+        self.respond({'id': 91, 'status': 'manually_completed',
+                      'price_result': {'initial_total': 1172.16, 'final_total': 1172.16, 'deduction': 0.0}})
+        self.assertEqual(self.client.post(self.url + '/refresh', headers=self.headers).status_code, 200)
+        with api.db.get_connection() as conn:
+            row = conn.execute('SELECT price_minor FROM tskupka_tasks WHERE export_id=?', (self.export_id,)).fetchone()
+        self.assertEqual(row['price_minor'], 117216)  # 1172.16 ₽
+
     def test_v4_migration_preserves_existing_export_and_backs_up(self):
         with api.db.get_connection() as conn:
             conn.execute('DROP TABLE tskupka_tasks')

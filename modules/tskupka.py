@@ -46,6 +46,24 @@ class TskupkaClient:
         return self.request('GET', f'/tasks/{task_id}')
 
 
+def extract_price(data):
+    """Итоговая выплата из ответа Tskupka.
+
+    price_result приходит объектом ({initial_total, final_total, deduction, ...}) —
+    берём final_total (сумму после множителей и вычетов). Поддержан и старый формат,
+    где price_result — число. Если суммы ещё нет — None (продолжаем опрос)."""
+    result = data.get('price_result')
+    if isinstance(result, dict):
+        for key in ('final_total', 'initial_total'):
+            value = result.get(key)
+            if type(value) in (int, float) and math.isfinite(value):
+                return value
+        return None
+    if type(result) in (int, float) and math.isfinite(result):
+        return result
+    return None
+
+
 def safe_summary(data):
     """Only documented numeric totals reach storage/UI; never arbitrary API data."""
     result = {}
@@ -135,7 +153,7 @@ class TskupkaService:
             self.db.save_tskupka_task(export_id, 'submitted', remote_status=status,
                                      summary={**task['summary'], **safe_summary(data)})
             try:
-                Finance(self.db).receive_price(export_id, data.get('price_result'))
+                Finance(self.db).receive_price(export_id, extract_price(data))
             except ValueError:
                 raise TskupkaError('Неизвестный формат price_result: сумма ещё не учтена.') from None
         except TskupkaError as exc:

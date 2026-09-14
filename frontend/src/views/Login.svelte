@@ -1,7 +1,7 @@
 <script>
   import Icon from '../components/Icon.svelte';
   let { login } = $props();
-  let username = $state('admin');
+  let username = $state('');
   let password = $state('');
   let error = $state('');
   let busy = $state(false);
@@ -35,7 +35,7 @@
       <h2>С возвращением</h2>
       <p class="muted">Введите данные администратора.</p>
       <label for="username">Логин</label>
-      <input id="username" autocomplete="username" required maxlength="100" bind:value={username}>
+      <input id="username" name="dt-login" autocomplete="off" autocapitalize="off" spellcheck="false" required maxlength="100" bind:value={username}>
       <label for="password">Пароль</label>
       <input id="password" type="password" autocomplete="current-password" required maxlength="1024" bind:value={password}>
       {#if error}<p class="form-error" role="alert">{error}</p>{/if}
