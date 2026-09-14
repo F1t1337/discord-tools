@@ -404,6 +404,19 @@ class ReviewChecks(unittest.TestCase):
         self.assertEqual(ok.status_code, 202)
         self.pipe.start_purchase.assert_called_once_with(80.0, 60, 5, 10)
 
+    def test_seller_breakdown_ranks_by_cost_per_valid(self):
+        for i in range(4):
+            self.pipe.db.add_token('seller-a-' + str(i) + 'x' * 20, seller_username='cheap', price=10)
+        self.pipe.db.update_token_status('seller-a-0' + 'x' * 20, 'invalid')
+        for i in range(2):
+            self.pipe.db.add_token('seller-b-' + str(i) + 'x' * 20, seller_username='premium', price=15)
+        result = self.pipe.db.get_seller_breakdown()
+        # 40/3 = 13.33 у cheap < 30/2 = 15 у premium — дешевле за валид, значит лучше и выше.
+        self.assertEqual([r['seller'] for r in result], ['cheap', 'premium'])
+        cheap = result[0]
+        self.assertEqual((cheap['bought'], cheap['invalid'], cheap['valid'], cheap['valid_percent']), (4, 1, 3, 75.0))
+        self.assertEqual(cheap['cost_per_valid'], 13.33)
+
     def test_atomic_export_only_claims_each_record_once(self):
         self.ready('synthetic-record-A')
         from concurrent.futures import ThreadPoolExecutor

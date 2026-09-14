@@ -461,7 +461,7 @@ def cleaning_accounts():
 
 @app.get('/api/sellers')
 def sellers():
-    return jsonify(items=db.get_seller_statistics())
+    return jsonify(items=db.get_seller_breakdown())
 
 
 @app.get('/api/logs')

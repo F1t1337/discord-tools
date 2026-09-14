@@ -937,6 +937,42 @@ class Database:
         except Exception as e:
             logger.error(f"❌ Ошибка обновления валидации продавца: {e}")
     
+    def get_seller_breakdown(self) -> List[Dict]:
+        """Живой рейтинг продавцов из таблицы tokens.
+
+        Для каждого продавца: куплено, отправлено, невалидные, готовые, потрачено,
+        % валида и эффективная цена за валидный аккаунт (потрачено ÷ валидные) —
+        главный показатель качества: чем ниже, тем лучше. Сортировка по нему."""
+        with self.get_connection() as conn:
+            rows = conn.execute('''
+                SELECT seller_username AS seller,
+                       COUNT(*) AS bought,
+                       SUM(CASE WHEN status='sent' THEN 1 ELSE 0 END) AS sent,
+                       SUM(CASE WHEN status='invalid' THEN 1 ELSE 0 END) AS invalid,
+                       SUM(CASE WHEN status='ready' THEN 1 ELSE 0 END) AS ready,
+                       SUM(COALESCE(price, 0)) AS spent,
+                       MAX(created_at) AS last_at
+                FROM tokens
+                WHERE seller_username IS NOT NULL AND seller_username != ''
+                GROUP BY seller_username
+            ''').fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            bought = item['bought'] or 0
+            invalid = item['invalid'] or 0
+            spent = item['spent'] or 0
+            valid = bought - invalid
+            item['valid'] = valid
+            item['valid_percent'] = round(valid / bought * 100, 1) if bought else 0
+            item['avg_price'] = round(spent / bought, 2) if bought else 0
+            item['cost_per_valid'] = round(spent / valid, 2) if valid > 0 else None
+            result.append(item)
+        # Топ по цене за валид (ниже — лучше); продавцы без валидных аккаунтов — в конец.
+        result.sort(key=lambda s: (s['cost_per_valid'] is None,
+                                   s['cost_per_valid'] if s['cost_per_valid'] is not None else 0.0))
+        return result
+
     def get_seller_statistics(self, limit: int = None) -> List[Dict]:
         """
         Получает статистику по продавцам
