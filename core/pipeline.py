@@ -1190,6 +1190,16 @@ class TokenPipeline:
         
         logger.info(f"✅ Pipeline запущен успешно! Всего потоков: {len(self.threads) + len(self._cleaner_workers)}")
 
+        # Закупки, зависшие в running/stopping после перезапуска, помечаем завершёнными
+        # (их задача покупки убита рестартом) — иначе по ним нельзя сделать выгрузку.
+        try:
+            from modules.finance import Finance
+            closed = Finance(self.db).finalize_orphaned_batches()
+            if closed:
+                logger.info('♻️ Завершено осиротевших закупок после перезапуска: %d', closed)
+        except Exception:
+            logger.warning('Не удалось закрыть осиротевшие закупки')
+
         # Возобновляем незавершённые аккаунты (new/validated/cleaning/cleaned): они
         # заново пройдут проверку и с лимитом попыток дойдут до финала (ready/invalid).
         # Так после перезапуска ничего не «зависает» в промежуточных состояниях.

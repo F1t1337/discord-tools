@@ -133,6 +133,19 @@ class FinanceTests(unittest.TestCase):
         self.assertEqual((month['start'], month['end'], month['profit_minor']), ('2026-09-01', '2026-09-30', 975))
         self.assertEqual(self.finance.report('month', '2024-02-20')['end'], '2024-02-29')
 
+    def test_orphaned_running_batch_is_finalized_and_exportable(self):
+        ident = self.batch()  # готовый токен, закупка завершена
+        with self.db.get_connection() as conn:
+            conn.execute("UPDATE purchase_batches SET status='running' WHERE id=?", (ident,))
+        # Пока закупка «running», выгрузка заблокирована.
+        with self.assertRaises(RuntimeError):
+            self.finance.export_candidates(ident)
+        # После перезапуска осиротевшую закупку закрываем — выгрузка разблокирована.
+        self.assertEqual(self.finance.finalize_orphaned_batches(), 1)
+        with self.db.get_connection() as conn:
+            self.assertEqual(conn.execute('SELECT status FROM purchase_batches WHERE id=?', (ident,)).fetchone()[0], 'interrupted')
+        self.assertEqual(len(self.finance.export_candidates(ident)), 1)
+
     def test_purchase_must_finish_and_process_all_records_before_single_export(self):
         ident = self.batch()
         self.db.add_token('synthetic-B', purchase_id=ident)

@@ -53,6 +53,16 @@ class Finance:
             conn.execute('UPDATE purchase_batches SET status=?, finished_at=? WHERE id=?',
                          (status, time.time(), purchase_id))
 
+    def finalize_orphaned_batches(self):
+        """Закрывает закупки, зависшие в running/stopping после перезапуска процесса.
+
+        На старте ни одна задача покупки не активна, поэтому такие записи осиротели —
+        помечаем 'interrupted', чтобы разблокировать выгрузку по ним."""
+        with self.db.get_connection() as conn:
+            return conn.execute("UPDATE purchase_batches SET status='interrupted', "
+                                "finished_at=COALESCE(finished_at, ?) "
+                                "WHERE status IN ('running','stopping')", (time.time(),)).rowcount
+
     def record_purchase(self, purchase_id, item_id, price):
         cost = money_minor(price)
         with self.db.get_connection() as conn:
