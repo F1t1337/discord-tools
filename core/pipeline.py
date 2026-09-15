@@ -975,9 +975,14 @@ class TokenPipeline:
                 api = DiscordAPI(proxy_manager, progress_tracker, proxy_info=proxy_info, transport=self.discord_transport)
 
                 try:
-                    # Запускаем очистку
-                    process_token(api, purchase['token'], progress_tracker,
-                                  close_channels=self.close_channels)
+                    # Запускаем очистку. Любое исключение внутри трактуем как неудачу
+                    # очистки (не оставляем аккаунт «висеть» в статусе cleaning).
+                    try:
+                        process_token(api, purchase['token'], progress_tracker,
+                                      close_channels=self.close_channels)
+                    except Exception as exc:
+                        logger.error(f"❌ [Cleaner] Ошибка очистки {purchase.get('username','?')}: {type(exc).__name__}")
+                        api.request_failed = True
                     if api.request_failed:
                         purchase['_clean_fail'] = purchase.get('_clean_fail', 0) + 1
                         if purchase['_clean_fail'] >= self.max_stage_attempts:

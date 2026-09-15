@@ -562,6 +562,25 @@ class ReviewChecks(unittest.TestCase):
         self.assertEqual(self.pipe.validated_queue.qsize(), 1)
         self.assertEqual(self.pipe.cleaned_queue.qsize(), 0)
 
+    def test_cleaner_exception_requeues_instead_of_orphaning_in_cleaning(self):
+        from queue import Queue
+        self.pipe.validated_queue = Queue()
+        self.pipe.cleaned_queue = Queue()
+        self.pipe.proxy_manager = Mock()
+        self.pipe.discord_transport = Mock()
+        self.ready('synthetic-record-A')
+        self.pipe.validated_queue.put({'token': 'synthetic-record-A'})
+        def boom(*args, **kwargs):
+            raise RuntimeError('cleaner crash')
+        def finish(seconds):
+            self.pipe.running = False
+        with patch('modules.cleaner.process_token', side_effect=boom), patch('core.pipeline.time.sleep', side_effect=finish):
+            self.pipe._cleaning_worker()
+        # Исключение очистки не оставляет аккаунт в cleaning — он возвращается в очередь.
+        self.assertEqual(self.pipe.db.get_token_info('synthetic-record-A')['status'], 'validated')
+        self.assertEqual(self.pipe.validated_queue.qsize(), 1)
+        self.assertEqual(self.pipe.cleaned_queue.qsize(), 0)
+
 
 if __name__ == '__main__':
     logging.disable(logging.CRITICAL)
