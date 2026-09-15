@@ -581,6 +581,25 @@ class ReviewChecks(unittest.TestCase):
         self.assertEqual(self.pipe.validated_queue.qsize(), 1)
         self.assertEqual(self.pipe.cleaned_queue.qsize(), 0)
 
+    def test_validator_requeues_on_unexpected_error_instead_of_losing_account(self):
+        from queue import Queue
+        self.pipe.validated_queue = Queue()
+        self.pipe.validator = SimpleNamespace(validate_token=Mock(return_value=(True, 'name')))
+        self.pipe.db.add_token('synthetic-record-A')
+        self.pipe.new_tokens_queue.put({'token': 'synthetic-record-A'})
+        real_update, calls = self.pipe.db.update_token_status, {'n': 0}
+        def flaky(*args, **kwargs):
+            calls['n'] += 1
+            if calls['n'] == 1:
+                raise sqlite3.OperationalError('database is locked')
+            return real_update(*args, **kwargs)
+        def finish(seconds):
+            self.pipe.running = False
+        with patch.object(self.pipe.db, 'update_token_status', side_effect=flaky), patch('core.pipeline.time.sleep', side_effect=finish):
+            self.pipe._validation_worker()
+        # Аккаунт не потерян при ошибке БД — вернулся в очередь на повтор.
+        self.assertEqual(self.pipe.new_tokens_queue.qsize(), 1)
+
 
 if __name__ == '__main__':
     logging.disable(logging.CRITICAL)

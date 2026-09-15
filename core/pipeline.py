@@ -845,11 +845,27 @@ class TokenPipeline:
     
     # ==================== ЭТАП 2: ПЕРВАЯ ВАЛИДАЦИЯ ====================
     
+    def _requeue_failed(self, purchase, queue, key, stage):
+        """При непредвиденной ошибке возвращает аккаунт в очередь (после лимита — invalid),
+        чтобы он никогда не терялся из обработки и не «зависал» в БД."""
+        purchase[key] = purchase.get(key, 0) + 1
+        logger.error('❌ [%s] Непредвиденная ошибка обработки (попытка %d)', stage, purchase[key])
+        try:
+            if purchase[key] >= self.max_stage_attempts:
+                self.db.update_token_status(token=purchase['token'], status='invalid',
+                                            error='Непредвиденная ошибка обработки после нескольких попыток')
+            else:
+                queue.put(purchase)
+        except Exception:
+            logger.error('❌ [%s] Не удалось вернуть аккаунт в очередь', stage)
+        time.sleep(2)
+
     def _validation_worker(self):
         """Поток первой валидации токенов"""
         logger.info("✅ [Validator #1] Запуск валидации...")
-        
+
         while self.running:
+            purchase = None
             try:
                 # Получаем токен из очереди
                 purchase = self.new_tokens_queue.get(timeout=1)
@@ -902,10 +918,13 @@ class TokenPipeline:
                     )
                 
                 self.new_tokens_queue.task_done()
-                
-            except:
-                # Queue пустая - ждем
-                time.sleep(1)
+
+            except Exception:
+                if purchase is not None:
+                    # Аккаунт уже взят из очереди — не теряем его при ошибке, возвращаем.
+                    self._requeue_failed(purchase, self.new_tokens_queue, '_v1_fail', 'Validator #1')
+                else:
+                    time.sleep(1)  # очередь пуста
                 continue
     
     # ==================== ЭТАП 3: ОЧИСТКА ====================
@@ -926,6 +945,7 @@ class TokenPipeline:
         proxy_manager = self.proxy_manager
 
         while self.running and (stop_event is None or not stop_event.is_set()):
+            purchase = None
             try:
                 # Получаем токен из очереди
                 purchase = self.validated_queue.get(timeout=1)
@@ -1019,11 +1039,14 @@ class TokenPipeline:
                     if proxy_manager is not None:
                         proxy_manager.release(purchase['token'])
 
-            except:
-                # Queue пустая - ждем
-                time.sleep(1)
+            except Exception:
+                if purchase is not None:
+                    # Ошибка вне process_token (напр. запись в БД) — не теряем аккаунт.
+                    self._requeue_failed(purchase, self.validated_queue, '_clean_fail', 'Cleaner')
+                else:
+                    time.sleep(1)  # очередь пуста
                 continue
-    
+
     # ==================== ЭТАП 4: ФИНАЛЬНАЯ ВАЛИДАЦИЯ ====================
     
     def _final_validation_worker(self):
@@ -1031,10 +1054,11 @@ class TokenPipeline:
         logger.info("🔍 [Validator #2] Запуск финальной валидации...")
         
         while self.running:
+            purchase = None
             try:
                 # Получаем токен из очереди
                 purchase = self.cleaned_queue.get(timeout=1)
-                
+
                 logger.info(f"🔍 [Validator #2] Финальная проверка токена {purchase.get('username', 'Unknown')}...")
                 
                 # Валидируем токен с обработкой исключений
@@ -1115,12 +1139,15 @@ class TokenPipeline:
                     )
                 
                 self.cleaned_queue.task_done()
-                
-            except:
-                # Queue пустая - ждем
-                time.sleep(1)
+
+            except Exception:
+                if purchase is not None:
+                    # Не теряем аккаунт при ошибке финальной проверки — возвращаем в очередь.
+                    self._requeue_failed(purchase, self.cleaned_queue, '_v2_fail', 'Validator #2')
+                else:
+                    time.sleep(1)  # очередь пуста
                 continue
-    
+
     # ==================== СТАТИСТИКА ====================
     
     def _statistics_worker(self):
