@@ -960,8 +960,10 @@ def send_export_tskupka(export_id):
         return error('Неверный номер выгрузки')
     if not tskupka.configured:
         return error('На сервере не задан TSKUPKA_API_KEY', 503)
+    # force=1 — ручной повтор владельцем при неизвестном результате прошлой отправки.
+    force = request.args.get('force') == '1'
     try:
-        task = tskupka.submit(export_id)
+        task = tskupka.submit(export_id, force=force)
     except ValueError:
         return error('Выгрузка не найдена', 404)
     except RuntimeError as exc:

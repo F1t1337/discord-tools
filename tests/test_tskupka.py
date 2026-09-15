@@ -180,6 +180,18 @@ class TskupkaTests(unittest.TestCase):
         self.assertIsNone(row['error'])
         self.assertEqual(row['remote_status'], 'awaiting_manual')
 
+    def test_force_resend_unblocks_unknown_result(self):
+        # Первая отправка: сервер 503 → результат неизвестен, обычный повтор заблокирован.
+        self.respond(code=503)
+        self.assertEqual(self.submit().status_code, 502)
+        self.assertEqual(api.db.get_tskupka_task(self.export_id)['state'], 'unknown')
+        self.assertEqual(self.submit().status_code, 409)
+        # Форс-повтор владельцем проходит и создаёт задачу.
+        self.respond({'task_id': 92})
+        forced = self.client.post(self.url + '?force=1', json={}, headers=self.headers)
+        self.assertEqual(forced.status_code, 200)
+        self.assertEqual(api.db.get_tskupka_task(self.export_id)['task_id'], 92)
+
     def test_v4_migration_preserves_existing_export_and_backs_up(self):
         with api.db.get_connection() as conn:
             conn.execute('DROP TABLE tskupka_tasks')

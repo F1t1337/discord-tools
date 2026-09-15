@@ -509,14 +509,19 @@ class Database:
             return [row['token'] for row in conn.execute(
                 'SELECT token FROM export_items WHERE batch_id=? ORDER BY rowid', (batch_id,))]
 
-    def claim_tskupka_export(self, export_id):
-        """Reserve before HTTP; an uncertain result must never be auto-resubmitted."""
+    def claim_tskupka_export(self, export_id, force=False):
+        """Reserve before HTTP; an uncertain result must never be auto-resubmitted.
+
+        force=True — ручной повтор владельцем: разрешает переотправку из состояния
+        'unknown' (например, после HTTP 503, когда результат неизвестен). Задачи с
+        подтверждённым task_id (state 'submitted') и идущую отправку ('sending') не трогаем."""
         with self.get_connection() as conn:
             conn.execute('BEGIN IMMEDIATE')
             if not conn.execute('SELECT 1 FROM export_items WHERE batch_id=? LIMIT 1', (export_id,)).fetchone():
                 raise ValueError('Export not found')
             row = conn.execute('SELECT state FROM tskupka_tasks WHERE export_id=?', (export_id,)).fetchone()
-            if row and row['state'] != 'rejected':
+            claimable = row is None or row['state'] == 'rejected' or (force and row['state'] == 'unknown')
+            if not claimable:
                 return False
             now = time.time()
             conn.execute('''INSERT INTO tskupka_tasks(export_id, state, created_at, updated_at)

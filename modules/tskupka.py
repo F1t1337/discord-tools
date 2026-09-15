@@ -121,8 +121,8 @@ class TskupkaService:
             raise TskupkaError('Tskupka вернула некорректный баланс.')
         return float(value)
 
-    def submit(self, export_id):
-        if not self.db.claim_tskupka_export(export_id):
+    def submit(self, export_id, force=False):
+        if not self.db.claim_tskupka_export(export_id, force=force):
             raise RuntimeError('Выгрузка уже отправлена или результат прошлой отправки неизвестен.')
         try:
             data = self.client.create(self.db.get_export_tokens(export_id))

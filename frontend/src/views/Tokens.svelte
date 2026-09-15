@@ -81,6 +81,18 @@
     finally { await load(); tskupkaBusy = null; }
   }
 
+  async function resendTskupka(id) {
+    if (tskupkaBusy !== null) return;
+    if (!(await confirmDialog('Повторить отправку в Tskupka?',
+      'Результат прошлой отправки неизвестен (например, HTTP 503). Tskupka могла уже создать задачу — сначала проверьте в сервисе, чтобы не отправить дубль. Продолжить?'))) return;
+    tskupkaBusy = id;
+    try {
+      await api(`/tokens/export/${id}/tskupka?force=1`, { method: 'POST', body: '{}' });
+      toast('Повторная отправка в Tskupka запущена');
+    } catch (e) { toast(e.message); }
+    finally { await load(); tskupkaBusy = null; }
+  }
+
   function tskupkaLabel(task) {
     if (!task) return 'Tskupka: не отправлено';
     if (task.state === 'sending') return 'Tskupka: отправка начата; повторная отправка заблокирована';
@@ -169,6 +181,10 @@
               {#if item.tskupka?.task_id}
                 <button class="button secondary small" onclick={() => sendTskupka(item.id, true)}
                   disabled={!job.tskupka_configured || tskupkaBusy !== null}>Обновить Tskupka</button>
+              {/if}
+              {#if item.tskupka?.state === 'unknown'}
+                <button class="button danger small" onclick={() => resendTskupka(item.id)}
+                  disabled={!job.tskupka_configured || tskupkaBusy !== null}>Повторить отправку</button>
               {/if}
             </div>
           </div>
